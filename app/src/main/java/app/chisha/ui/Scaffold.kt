@@ -97,7 +97,12 @@ private fun SearchScaffold(
     val text = rememberTextFieldState()
     val state = rememberContainedSearchBarState()
     val scope = rememberCoroutineScope()
-    val colors = SearchBarDefaults.appBarWithSearchColors(searchBarColors = SearchBarDefaults.containedColors(state = state))
+    // 顶栏底色明确用 surface（这个测试版默认是透明的，滚动时列表会从后面透出来）
+    val colors = SearchBarDefaults.appBarWithSearchColors(
+        searchBarColors = SearchBarDefaults.containedColors(state = state),
+        appBarContainerColor = MaterialTheme.colorScheme.surface,
+        scrolledAppBarContainerColor = MaterialTheme.colorScheme.surface,
+    )
     val close: () -> Unit = { scope.launch { state.animateToCollapsed() } }
     val input = @Composable {
         SearchBarDefaults.InputField(

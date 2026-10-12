@@ -57,7 +57,9 @@ shoot_all() {
   shot "$m-01-冰箱"
   adb shell input swipe 540 1700 540 700 500; sleep 2; shot "$m-02-冰箱-往下滑"
   tap_text "在冰箱里找食材"; adb shell input text "egg"; sleep 2; shot "$m-02b-搜索展开"
-  adb shell input keyevent 4; sleep 1; adb shell input keyevent 4; sleep 2
+  adb shell input keyevent 111; sleep 1          # 收起键盘（ESC，不会退出 App）
+  tap_text "返回"; sleep 1
+  adb shell am start -n app.chisha/.MainActivity >/dev/null; sleep 2   # 保证 App 在前台
   tap_text "做什么"; shot "$m-03-做什么"
   tap_text "清单"
   if [ "$m" = "浅色" ]; then
