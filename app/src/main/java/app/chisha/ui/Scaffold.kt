@@ -2,6 +2,7 @@
 
 package app.chisha.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -124,7 +125,10 @@ private fun SearchScaffold(
     // 搜索栏固定在顶上，不随滚动藏起来（藏起来时内容会透到状态栏下面）
     Scaffold(
         topBar = {
-            AppBarWithSearch(state = state, inputField = input, colors = colors, actions = actions)
+            // 官方组件把状态栏那一条留空（透明），外面垫一层同色底，滚动时内容不会透到状态栏下面
+            Box(Modifier.background(MaterialTheme.colorScheme.surface)) {
+                AppBarWithSearch(state = state, inputField = input, colors = colors, actions = actions)
+            }
             ExpandedFullScreenContainedSearchBar(state = state, inputField = input, colors = colors.searchBarColors) {
                 search.results(text.text.toString(), close)
             }
