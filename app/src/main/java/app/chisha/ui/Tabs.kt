@@ -137,7 +137,6 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
     }
 }
 
-@Composable
 /**
  * 可以左右滑的行（官方 SwipeToDismissBox）：
  * 往左滑 = 删除，往右滑 = 另一个操作（比如“买到了”）；滑过一半有震动提示。
