@@ -52,7 +52,18 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
+          profile: pixel_6
           script: bash .github/smoke.sh
+
+      - name: Save screenshots to screens branch
+        if: always()
+        shell: bash
+        run: |
+          [ -d "$GITHUB_WORKSPACE/shots" ] || exit 0
+          mkdir -p /tmp/shots && cp "$GITHUB_WORKSPACE"/shots/*.png /tmp/shots/ && cd /tmp/shots
+          git init -q && git checkout -q -b screens
+          git -c user.name=ci -c user.email=ci@local add -A && git -c user.name=ci -c user.email=ci@local commit -qm "run ${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" screens
 
       - name: Save crash log to ci-logs branch
         if: failure()

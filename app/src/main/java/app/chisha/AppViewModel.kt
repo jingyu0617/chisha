@@ -304,7 +304,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMode(m: String) = edit { it.copy(settings = it.settings.copy(mode = m)) }
     fun setSeasonHave(v: Boolean) = edit { it.copy(settings = it.settings.copy(seasonHave = v)) }
-    fun setSkin(v: String) = edit { it.copy(settings = it.settings.copy(skin = v)) }
     fun setMuscle(v: Boolean) = edit { it.copy(settings = it.settings.copy(muscle = v)) }
     fun setNotify(v: Boolean) {
         edit { it.copy(settings = it.settings.copy(notify = v)) }

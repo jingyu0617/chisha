@@ -114,7 +114,7 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
             }
         }
         item {
-            SkinSearchField(q, { q = it }, "找食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            SearchField(q, { q = it }, "找食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         }
         if (inv.isNotEmpty()) item {
             val opts = listOf("") + K.ICATS.filter { (counts[it] ?: 0) > 0 }
@@ -432,7 +432,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            SkinSegmented(listOf("抽一道", "配一桌"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+            ChoiceGroup(listOf("抽一道", "配一桌"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
         }
         item {
             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -613,10 +613,10 @@ fun BookTab(vm: AppViewModel, data: AppData) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            SkinSearchField(q, { q = it }, "搜菜名或食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            SearchField(q, { q = it }, "搜菜名或食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         }
         item {
-            SkinSegmented(listOf("全部", "收藏", "吃过"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            ChoiceGroup(listOf("全部", "收藏", "吃过"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         }
         item { ChipRow(listOf("") + K.RCATS, { it == cat }, { cat = if (cat == it) "" else it }, label = { it.ifEmpty { "全部" } }, modifier = Modifier.padding(top = 8.dp)) }
         item {

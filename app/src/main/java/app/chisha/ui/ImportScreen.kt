@@ -38,11 +38,11 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
         toast.show(if (n == 0) "没认出菜谱。请确认文字里有【菜名】【原料】【做法】" else "认出 $n 道菜，看一眼再导入")
     }
 
-    SkinScaffold(
-        title = "导入菜谱", snackbar = snackbar, onBack = { vm.clearDrafts(); nav.back() }, largeTitle = false,
+    AppScaffold(
+        title = "导入菜谱", snackbar = snackbar, onBack = { vm.clearDrafts(); nav.back() },
         bottomBar = {
-            if (drafts.isNotEmpty()) SkinBottomPanel {
-                SkinPrimaryButton(
+            if (drafts.isNotEmpty()) BottomPanel {
+                PrimaryButton(
                     if (chosen > 0) "导入选中的 $chosen 道" else "没有选中的菜",
                     {
                         val n = vm.importDrafts()
@@ -110,7 +110,7 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
                             if (exists) {
                                 Text("已经有一道「${r.name}」：", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                                 val cs3 = AppViewModel.Conflict.entries
-                                SkinSegmented(cs3.map { it.label }, cs3.indexOf(d.conflict), { vm.setConflict(i, cs3[it]) }, Modifier.fillMaxWidth())
+                                ChoiceGroup(cs3.map { it.label }, cs3.indexOf(d.conflict), { vm.setConflict(i, cs3[it]) }, Modifier.fillMaxWidth())
                             }
                             TextButton(onClick = { nav.open(EditKey("draft:$i")) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
                                 Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))

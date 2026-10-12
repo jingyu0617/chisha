@@ -87,7 +87,6 @@ val LocalSharedScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
  */
 @Composable
 private fun Modifier.predictiveCorners(): Modifier {
-    if (LocalSkin.current == Skin.APPLE) return this
     val scope = LocalNavAnimatedContentScope.current
     val r by scope.transition.animateDp(label = "corner") { if (it == EnterExitState.PostExit) 32.dp else 0.dp }
     return if (r > 0.dp) this.clip(RoundedCornerShape(r)) else this
@@ -98,8 +97,6 @@ fun ChishaApp(vm: AppViewModel) {
     val loaded by vm.loaded.collectAsStateWithLifecycle()
     val data by vm.data.collectAsStateWithLifecycle()
     val recipes by vm.recipes.collectAsStateWithLifecycle()
-    val skin = LocalSkin.current
-
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val toaster = remember { Toaster(snackbar, scope) }
@@ -133,39 +130,21 @@ fun ChishaApp(vm: AppViewModel) {
                         entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
                         sharedTransitionScope = this,
                         transitionSpec = {
-                            if (skin == Skin.APPLE) {
-                                // iOS：新页从右边推入，旧页向左视差
-                                slideInHorizontally(tween(380)) { it } togetherWith slideOutHorizontally(tween(380)) { -it / 3 }
-                            } else {
-                                // 安卓：共享 X 轴（小位移 + 淡入淡出）
-                                (slideInHorizontally(tween(300)) { it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
-                                    (slideOutHorizontally(tween(300)) { -it / 8 } + fadeOut(tween(90)))
-                            }
+                            // 安卓：共享 X 轴（小位移 + 淡入淡出）
+                            (slideInHorizontally(tween(300)) { it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
+                                (slideOutHorizontally(tween(300)) { -it / 8 } + fadeOut(tween(90)))
                         },
                         popTransitionSpec = {
-                            if (skin == Skin.APPLE) {
-                                ContentTransform(
-                                    slideInHorizontally(tween(340)) { -it / 3 }, slideOutHorizontally(tween(340)) { it }, targetContentZIndex = -1f,
-                                )
-                            } else {
-                                (slideInHorizontally(tween(300)) { -it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
-                                    (slideOutHorizontally(tween(300)) { it / 8 } + fadeOut(tween(90)))
-                            }
+                            (slideInHorizontally(tween(300)) { -it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
+                                (slideOutHorizontally(tween(300)) { it / 8 } + fadeOut(tween(90)))
                         },
                         predictivePopTransitionSpec = {
-                            if (skin == Skin.APPLE) {
-                                // iOS：跟着手指整页右滑，下面一页从左边视差滑入
-                                ContentTransform(
-                                    slideInHorizontally { -it / 3 }, slideOutHorizontally { it }, targetContentZIndex = -1f,
-                                )
-                            } else {
-                                // 安卓 17：被拖走的页面缩小、四角变圆（见 predictiveCorners），下面一页淡入
-                                ContentTransform(
-                                    fadeIn(initialAlpha = 0.6f) + scaleIn(initialScale = 0.96f),
-                                    scaleOut(targetScale = 0.9f) + fadeOut(targetAlpha = 0.4f),
-                                    targetContentZIndex = -1f,
-                                )
-                            }
+                            // 安卓 17：被拖走的页面缩小、四角变圆（见 predictiveCorners），下面一页淡入
+                            ContentTransform(
+                                fadeIn(initialAlpha = 0.6f) + scaleIn(initialScale = 0.96f),
+                                scaleOut(targetScale = 0.9f) + fadeOut(targetAlpha = 0.4f),
+                                targetContentZIndex = -1f,
+                            )
                         },
                         entryProvider = entryProvider {
                             entry<HomeKey> {
@@ -259,7 +238,6 @@ private fun Home(
     val nav = LocalNav.current
     val toast = LocalToaster.current
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
-    val skin = LocalSkin.current
     val hp = rememberHaptics()
     val urgentCount = data.inv.count { (K.daysLeft(it.exp) ?: 99) <= 3 || (K.supplyDays(it) ?: 99) <= 5 }
     val shopCount = data.shop.count { !it.done }
@@ -281,7 +259,7 @@ private fun Home(
     }
 
     val content: @Composable () -> Unit = {
-        SkinScaffold(
+        AppScaffold(
             title = if (tab == 0) "今天吃啥" else TABS[tab].title,
             snackbar = snackbar,
             subtitle = if (tab == 0) today else null,
@@ -304,14 +282,7 @@ private fun Home(
                 }
             },
             bottomBar = {
-                if (skin == Skin.APPLE) {
-                    AppleTabBar(
-                        TABS.mapIndexed { i, t ->
-                            TabSpec(t.title, t.icon, badgeOf(i), if (i == 2) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
-                        },
-                        tab, select,
-                    )
-                } else if (!wide) {
+                if (!wide) {
                     // 安卓 17：Expressive 的短导航栏
                     ShortNavigationBar {
                         TABS.forEachIndexed { i, t ->
@@ -341,7 +312,7 @@ private fun Home(
         }
     }
 
-    if (wide && skin == Skin.ANDROID) {
+    if (wide) {
         Row(Modifier.fillMaxSize()) {
             WideNavigationRail {
                 TABS.forEachIndexed { i, t ->

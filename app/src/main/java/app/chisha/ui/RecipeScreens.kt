@@ -51,12 +51,12 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
     val fav = r.name in data.favs
     val cs = MaterialTheme.colorScheme
 
-    SkinScaffold(
+    AppScaffold(
         title = r.name,
         snackbar = snackbar,
         onBack = nav.back,
         subtitle = listOfNotNull(r.cat, r.protein?.let { "蛋白 ${it}g" }, r.minutes?.let { "约${it}分钟" }).joinToString(" · "),
-        titleModifier = if (LocalSkin.current == Skin.APPLE) Modifier else Modifier.sharedRecipe(r.id),
+        titleModifier = Modifier.sharedRecipe(r.id),
         actions = {
                     IconButton(onClick = { vm.toggleFav(r.name); toast.show(if (fav) "已取消收藏" else "已收藏") }) {
                         if (fav) Icon(Icons.Filled.Favorite, "取消收藏", tint = cs.tertiary) else Icon(Icons.Outlined.FavoriteBorder, "收藏")
@@ -73,16 +73,12 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             }
         },
         bottomBar = {
-            SkinBottomPanel {
-                SkinPrimaryButton("做了这道", { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth())
+            BottomPanel {
+                PrimaryButton("做了这道", { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth())
             }
         },
     ) { pad ->
-        val apple = LocalSkin.current == Skin.APPLE
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = pad.calculateBottomPadding() + 24.dp)) {
-            if (apple) item {
-                Text(r.name, Modifier.padding(horizontal = 20.dp, vertical = 4.dp).sharedRecipe(r.id), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            }
             item {
                 FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Tag(r.cat)
@@ -244,11 +240,10 @@ fun RecipeEditScreen(
         toast.show(if (onSave != null) "已更新，记得回去点导入" else if (r == null) "已添加 ${rec.name.trim()}" else "已保存")
     }
 
-    SkinScaffold(
+    AppScaffold(
         title = title ?: if (r == null) "新菜" else "编辑菜谱",
         snackbar = snackbar,
         onBack = { if (dirty) askLeave = true else nav.back() },
-        largeTitle = false,
         actions = { Button(onClick = ::save, modifier = Modifier.padding(end = 8.dp)) { Text("保存") } },
     ) { pad ->
         Column(
@@ -272,10 +267,10 @@ fun RecipeEditScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("辣", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); SkinSwitch(spicy, { spicy = it })
+                Text("辣", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); HapticSwitch(spicy, { spicy = it })
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("含肉（“只要素的”会排除）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); SkinSwitch(meat, { meat = it })
+                Text("含肉（“只要素的”会排除）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); HapticSwitch(meat, { meat = it })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(

@@ -103,21 +103,9 @@ fun SectionTitle(text: String, count: Int? = null, modifier: Modifier = Modifier
     }
 }
 
-/** iOS 的“内嵌分组”列表：首尾圆角、中间直角、细分隔线 */
-fun iosGroupShape(index: Int, size: Int): RoundedCornerShape {
-    val r = 22.dp
-    return when {
-        size == 1 -> RoundedCornerShape(r)
-        index == 0 -> RoundedCornerShape(topStart = r, topEnd = r)
-        index == size - 1 -> RoundedCornerShape(bottomStart = r, bottomEnd = r)
-        else -> RoundedCornerShape(0.dp)
-    }
-}
-
 /**
  * 分组列表的一行。
- * 安卓外观：官方 Material 3 Expressive 的 SegmentedListItem（分段圆角、按压形变、标准配色）。
- * 苹果外观：iOS 内嵌分组样式。
+ * 官方 Material 3 Expressive 的 SegmentedListItem（分段圆角、按压形变、标准配色）。
  */
 @Composable
 fun GroupItem(
@@ -126,24 +114,6 @@ fun GroupItem(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    if (LocalSkin.current == Skin.APPLE) {
-        Surface(
-            shape = iosGroupShape(index, size),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        ) {
-            if (index > 0) HorizontalDivider(Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-            Row(
-                Modifier
-                    .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .heightIn(min = 40.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content,
-            )
-        }
-        return
-    }
     val shapes = ListItemDefaults.segmentedShapes(index, size)
     val mod = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 2.dp)
     val body: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically, content = content) }
@@ -198,16 +168,11 @@ fun ChipFlow(
 
 /**
  * 单选按钮组。
- * 安卓外观：Expressive 的“连接按钮组”（ToggleButton + 连接形状，按下会挤压变形）。
- * 苹果外观：iOS 分段控件。
+ * 官方 Expressive 的“连接按钮组”（ToggleButton + 连接形状，按下会挤压变形）。
  */
 @Composable
-fun SkinSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun ChoiceGroup(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val hp = rememberHaptics()
-    if (LocalSkin.current == Skin.APPLE) {
-        IosSegmented(options, selected, { hp.tick(); onSelect(it) }, modifier)
-        return
-    }
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
         options.forEachIndexed { i, label ->
             ToggleButton(
@@ -226,15 +191,18 @@ fun SkinSegmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit,
     }
 }
 
+/** 开关：官方 Switch，切换时有触感反馈 */
+@Composable
+fun HapticSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val hp = rememberHaptics()
+    Switch(checked = checked, onCheckedChange = { hp.toggle(it); onCheckedChange(it) })
+}
+
 /* ======================= 搜索 ======================= */
 
-/** 搜索框：安卓用官方 SearchBar；苹果用 iOS 风格的灰色圆角搜索框 */
+/** 搜索框：官方 SearchBar */
 @Composable
-fun SkinSearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
-    if (LocalSkin.current == Skin.APPLE) {
-        IosSearchField(query, onQueryChange, placeholder, modifier)
-        return
-    }
+fun SearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
     val tfs = rememberTextFieldState(query)
     val sbs = rememberSearchBarState()
     LaunchedEffect(tfs) { snapshotFlow { tfs.text.toString() }.collectLatest { onQueryChange(it) } }
