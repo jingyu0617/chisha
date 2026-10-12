@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 
 package app.chisha.ui
 
@@ -23,7 +23,14 @@ import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,104 +52,102 @@ private val BOTTOM = PaddingValues(bottom = 96.dp)
 
 @Composable
 fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
-    val nav = LocalNav.current
     val toast = LocalToaster.current
     var cat by remember { mutableStateOf("") }
-    var q by remember { mutableStateOf("") }
     val inv = data.inv
     val urgent = inv.filter { (K.daysLeft(it.exp) ?: 99) <= 3 }.sortedBy { K.daysLeft(it.exp) }
     val counts = inv.groupingBy { it.cat }.eachCount()
-    val list = inv.filter { (cat.isEmpty() || it.cat == cat) && (q.isBlank() || it.name.contains(q.trim())) }
+    val list = inv.filter { cat.isEmpty() || it.cat == cat }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         if (urgent.isNotEmpty()) item {
             val soon = urgent.filter { (K.daysLeft(it.exp) ?: 0) >= 0 }
             val expired = urgent.filter { (K.daysLeft(it.exp) ?: 0) < 0 }
-            ElevatedCard(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(
-                        listOfNotNull(
-                            if (soon.isNotEmpty()) "${soon.size} 样快到期，先吃掉" else null,
-                            if (expired.isNotEmpty()) "${expired.size} 样已过期" else null,
-                        ).joinToString("，"),
-                        style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                    if (soon.isNotEmpty()) Text(
-                        soon.joinToString("、") { "${it.name}（${K.expInfo(K.daysLeft(it.exp))!!.first}）" },
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                    if (expired.isNotEmpty()) Text(
-                        "已过期：" + expired.joinToString("、") { it.name } + "，看看还能不能吃，不能就删掉。",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                    if (soon.isNotEmpty()) FilledTonalButton(onClick = onGoCookUrgent, modifier = Modifier.padding(top = 12.dp)) {
-                        Text("用快过期的做什么")
-                    }
-                }
-            }
+            NoticeCard(
+                icon = Icons.Outlined.WarningAmber,
+                title = listOfNotNull(
+                    if (soon.isNotEmpty()) "${soon.size} 样快到期，先吃掉" else null,
+                    if (expired.isNotEmpty()) "${expired.size} 样已过期" else null,
+                ).joinToString("，"),
+                body = listOfNotNull(
+                    soon.takeIf { it.isNotEmpty() }?.joinToString("、") { "${it.name}（${K.expInfo(K.daysLeft(it.exp))!!.first}）" },
+                    expired.takeIf { it.isNotEmpty() }?.let { e -> "已过期：" + e.joinToString("、") { it.name } + "，看看还能不能吃" },
+                ).joinToString("\n"),
+                urgent = true,
+                action = if (soon.isNotEmpty()) ({ FilledTonalButton(onClick = onGoCookUrgent) { Text("用快过期的做什么") } }) else null,
+            )
         }
         val low = inv.filter { (K.supplyDays(it) ?: 99) <= 5 }
         if (low.isNotEmpty()) item {
-            Surface(
-                shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            ) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("快用完了", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                    Text(
-                        low.joinToString("、") { "${it.name}（还能用 ${K.supplyDays(it)} 天）" } + "。已自动加进购物清单。",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                }
-            }
+            NoticeCard(
+                icon = Icons.Outlined.Inventory2,
+                title = "快用完了",
+                body = low.joinToString("、") { "${it.name}（还能用 ${K.supplyDays(it)} 天）" } + "。已自动加进购物清单。",
+            )
         }
         if (inv.any { it.sample }) item {
-            Surface(
-                shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            ) {
-                Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("现在是示例数据，添加第一样食材后会自动清掉。", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                    TextButton(onClick = { vm.clearSample(); toast.show("示例已清空") { vm.undo() } }) { Text("现在清空") }
-                }
-            }
-        }
-        item {
-            SearchField(q, { q = it }, "找食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            NoticeCard(
+                icon = Icons.Outlined.Info,
+                title = "现在是示例数据",
+                body = "添加第一样食材后会自动清掉。",
+                action = { TextButton(onClick = { vm.clearSample(); toast.show("示例已清空") { vm.undo() } }) { Text("现在清空") } },
+            )
         }
         if (inv.isNotEmpty()) item {
             val opts = listOf("") + K.ICATS.filter { (counts[it] ?: 0) > 0 }
-            ChipRow(opts, { it == cat }, { cat = if (cat == it) "" else it }, label = { if (it.isEmpty()) "全部 ${inv.size}" else "$it ${counts[it]}" })
+            ChipRow(opts, { it == cat }, { cat = if (cat == it) "" else it }, label = { if (it.isEmpty()) "全部 ${inv.size}" else "$it ${counts[it]}" },
+                modifier = Modifier.padding(top = 4.dp))
         }
-        if (inv.isEmpty()) item { EmptyCard("冰箱还是空的。点右下角“添加食材”，把买回来的菜录进来。") }
-        else if (list.isEmpty()) item { EmptyCard("没找到这样食材。") }
+        if (inv.isEmpty()) item { EmptyCard("冰箱还是空的。点右下角的加号，把买回来的菜录进来。") }
         K.ICATS.forEach { c ->
             val g = list.filter { it.cat == c }.sortedWith(compareBy<InvItem> { K.daysLeft(it.exp) ?: 9999 }.thenBy { it.name })
             if (g.isEmpty()) return@forEach
             item(key = "h-$c") { SectionTitle(c, g.size) }
             itemsIndexed(g, key = { _, it -> it.id }) { i, it ->
                 SwipeRow(
+                    i, g.size,
                     onEndToStart = { vm.deleteInv(it.id); toast.show("已删除 ${it.name}") { vm.undo() } },
                     endLabel = "删除",
                     modifier = Modifier.animateItem(),
-                ) { InvRow(vm, it, i, g.size) }
+                ) { InvRow(vm, it, i, g.size, inset = false) }
             }
         }
     }
 }
 
+/** 顶栏搜索展开后的结果：冰箱里的食材 */
+@Composable
+fun FridgeSearchResults(vm: AppViewModel, data: AppData, query: String, close: () -> Unit) {
+    val nav = LocalNav.current
+    val q = query.trim()
+    val hits = if (q.isEmpty()) emptyList() else data.inv.filter { it.name.contains(q) || it.cat.contains(q) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+        if (q.isEmpty()) item { SearchHint("输入食材名，比如“蛋”“肉”") }
+        else if (hits.isEmpty()) item {
+            SearchHint("冰箱里没有“$q”")
+            TextButton(onClick = { close(); nav.sheet(Sheet.Item(null, q)) }, Modifier.padding(horizontal = 8.dp)) { Text("添加“$q”") }
+        }
+        itemsIndexed(hits, key = { _, it -> it.id }) { i, it ->
+            GroupItem(i, hits.size, onClick = { close(); nav.sheet(Sheet.Item(it)) }, supporting = { InvSupporting(it) },
+                trailing = { Text("${K.fmtQ(it.qty)} ${it.unit}", style = MaterialTheme.typography.labelLarge) }) { Text(it.name) }
+        }
+    }
+}
+
+@Composable
+fun SearchHint(text: String) {
+    Text(text, Modifier.padding(horizontal = 24.dp, vertical = 16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 /**
- * 可以左右滑的行（官方 SwipeToDismissBox）：
- * 往左滑 = 删除，往右滑 = 另一个操作（比如“买到了”）；滑过一半有震动提示。
+ * 可以左右滑的行（官方 SwipeToDismissBox，按官方示例：底色跟着滑动目标变，没滑时透明）。
+ * 往左滑 = 删除，往右滑 = 另一个操作（比如“买到了”）；滑过阈值有震动。
+ * 整个滑动区域裁成和列表行一样的分段形状，不会再从圆角漏出底色。
  */
 @Composable
 private fun SwipeRow(
+    index: Int,
+    size: Int,
     onEndToStart: () -> Unit,
     endLabel: String,
     modifier: Modifier = Modifier,
@@ -162,24 +167,31 @@ private fun SwipeRow(
     }
     SwipeToDismissBox(
         state = state,
-        modifier = modifier,
+        modifier = modifier.padding(horizontal = 16.dp).padding(bottom = ListItemDefaults.SegmentedGap).clip(groupShape(index, size)),
         enableDismissFromStartToEnd = onStartToEnd != null,
         backgroundContent = {
+            val target = state.targetValue
             val dir = state.dismissDirection
             val start = dir == SwipeToDismissBoxValue.StartToEnd
+            val bg by animateColorAsState(
+                when (target) {
+                    SwipeToDismissBoxValue.Settled -> if (dir == SwipeToDismissBoxValue.Settled) Color.Transparent else cs.surfaceContainerHighest
+                    SwipeToDismissBoxValue.StartToEnd -> cs.primaryContainer
+                    SwipeToDismissBoxValue.EndToStart -> cs.errorContainer
+                }, label = "swipe",
+            )
             Row(
-                Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 2.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (start) cs.primaryContainer else cs.errorContainer)
-                    .padding(horizontal = 20.dp),
+                Modifier.fillMaxSize().background(bg).padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = if (start) Arrangement.Start else Arrangement.End,
             ) {
-                if (dir != SwipeToDismissBoxValue.Settled) Text(
-                    if (start) startLabel else endLabel,
-                    color = if (start) cs.onPrimaryContainer else cs.onErrorContainer,
-                    style = MaterialTheme.typography.labelLarge,
-                )
+                if (dir != SwipeToDismissBoxValue.Settled) {
+                    Icon(if (start) Icons.Outlined.Check else Icons.Outlined.Delete, null,
+                        tint = if (start) cs.onPrimaryContainer else cs.onErrorContainer)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (start) startLabel else endLabel, color = if (start) cs.onPrimaryContainer else cs.onErrorContainer,
+                        style = MaterialTheme.typography.labelLarge)
+                }
             }
         },
         onDismiss = { v ->
@@ -192,43 +204,51 @@ private fun SwipeRow(
     ) { content() }
 }
 
+/** 食材行的副标题：放哪 · 保质期（过期红色、快到期强调色）；消耗品显示还能用几天 */
 @Composable
-private fun InvRow(vm: AppViewModel, it: InvItem, i: Int, n: Int) {
+private fun InvSupporting(it: InvItem) {
+    val supply = K.supplyDays(it)
+    if (supply != null) {
+        val coffee = K.coffeeFresh(it.roast)
+        Text(
+            "每天${K.fmtQ(it.perDay ?: 1.0)}次 · 还能用${supply}天" + (coffee?.let { c -> " · ${c.first}" } ?: ""),
+            color = if (supply <= 5) MaterialTheme.colorScheme.error else expColor(coffee?.second),
+        )
+    } else {
+        val info = K.expInfo(K.daysLeft(it.exp))
+        Text(
+            buildAnnotatedString {
+                append(it.loc)
+                if (info != null) {
+                    append(" · ")
+                    withStyle(SpanStyle(color = expColor(info.second))) { append(info.first) }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun InvRow(vm: AppViewModel, it: InvItem, i: Int, n: Int, inset: Boolean = true) {
     val nav = LocalNav.current
     val toast = LocalToaster.current
-    GroupItem(i, n, onClick = { nav.sheet(Sheet.Item(it)) }) {
-        Column(Modifier.weight(1f)) {
-            Text(it.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val supply = K.supplyDays(it)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (supply != null) {
-                    Text("每天${K.fmtQ(it.perDay ?: 1.0)}次 · 还能用${supply}天", style = MaterialTheme.typography.bodySmall,
-                        color = if (supply <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Text(it.loc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    ExpBadge(it.exp)
-                }
-            }
-            K.coffeeFresh(it.roast)?.let { (t, lv) ->
-                val cs = MaterialTheme.colorScheme
-                Tag(t, when (lv) { K.Level.BAD -> cs.errorContainer; K.Level.WARN -> cs.tertiaryContainer; else -> cs.primaryContainer },
-                    when (lv) { K.Level.BAD -> cs.onErrorContainer; K.Level.WARN -> cs.onTertiaryContainer; else -> cs.onPrimaryContainer })
-            }
-        }
-        if (it.dose != null) {
-            QtyStepper(
+    GroupItem(
+        i, n, onClick = { nav.sheet(Sheet.Item(it)) }, inset = inset,
+        supporting = { InvSupporting(it) },
+        trailing = {
+            if (it.dose != null) QtyControl(
                 "${K.fmtQ(it.qty)} ${it.unit}",
                 onMinus = { vm.useOnce(it.id); toast.show("${it.name} 用了一次（${K.fmtQ(it.dose)}${it.unit}）") },
                 onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
                 what = it.name,
+            ) else QtyControl(
+                "${K.fmtQ(it.qty)} ${it.unit}",
+                onMinus = { if (vm.changeQty(it.id, -K.stepOf(it.unit))) toast.show("${it.name} 用完了，已移出冰箱") { vm.undo() } },
+                onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
+                what = it.name,
             )
-        } else QtyStepper(
-            "${K.fmtQ(it.qty)} ${it.unit}",
-            onMinus = { if (vm.changeQty(it.id, -K.stepOf(it.unit))) toast.show("${it.name} 用完了，已移出冰箱") { vm.undo() } },
-            onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
-            what = it.name,
-        )
-    }
+        },
+    ) { Text(it.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
 }
 
 /* ======================= 做什么 ======================= */
@@ -258,14 +278,8 @@ fun CookTab(vm: AppViewModel, data: AppData, urgentOnly: Boolean, setUrgentOnly:
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (urgent.isNotEmpty()) item {
-            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("优先用掉", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                    Text(urgent.joinToString("、") { "${it.name}（${K.expInfo(K.daysLeft(it.exp))!!.first}）" },
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                }
-            }
+            NoticeCard(Icons.Outlined.WarningAmber, "优先用掉",
+                urgent.joinToString("、") { "${it.name}（${K.expInfo(K.daysLeft(it.exp))!!.first}）" }, urgent = true)
         }
         item {
             val opts = buildList { if (urgent.isNotEmpty()) add("只看用快过期的"); add("高蛋白"); add("只看不缺主料的"); add("不吃辣") }
@@ -298,7 +312,7 @@ fun AnalysisLine(r: Recipe, a: Analysis) {
         if (a.missing.isEmpty()) withStyle(SpanStyle(color = cs.primary)) { append("主料都有") }
         else append("还缺：" + a.missing.take(4).joinToString("、") + if (a.missing.size > 4) " 等" else "")
         r.minutes?.let { append(" · 约${it}分钟") }
-    }, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+    })
 }
 
 /* ======================= 清单 ======================= */
@@ -320,17 +334,15 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = input, onValueChange = { input = it }, singleLine = true,
-                    placeholder = { Text("要买什么，多样用空格隔开") }, shape = RoundedCornerShape(28.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { add() }),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(onClick = { add() }, modifier = Modifier.size(52.dp)) { Text("加", style = MaterialTheme.typography.titleMedium) }
-            }
+            // 官方输入框，加号放在输入框尾部（trailingIcon）
+            OutlinedTextField(
+                value = input, onValueChange = { input = it }, singleLine = true,
+                label = { Text("要买什么") }, supportingText = { Text("多样用空格隔开，回车或点加号添加") },
+                trailingIcon = { IconButton(onClick = { add() }, enabled = input.isNotBlank()) { Icon(Icons.Outlined.Add, "加入清单") } },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
         item {
             Row(Modifier.padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -349,6 +361,7 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
             item(key = "sh-$c") { SectionTitle(c, g.size) }
             itemsIndexed(g, key = { _, it -> it.id }) { i, it ->
                 SwipeRow(
+                    i, g.size,
                     onEndToStart = { vm.removeShop(it.id); toast.show("已删掉 ${it.name}") { vm.undo() } }, endLabel = "删掉",
                     onStartToEnd = { vm.toggleShop(it.id) }, startLabel = "买到了",
                     modifier = Modifier.animateItem(),
@@ -359,6 +372,7 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
             item(key = "done-h") { SectionTitle("已买", done.size) }
             itemsIndexed(done, key = { _, it -> it.id }) { i, it ->
                 SwipeRow(
+                    i, done.size,
                     onEndToStart = { vm.removeShop(it.id); toast.show("已删掉 ${it.name}") { vm.undo() } }, endLabel = "删掉",
                     onStartToEnd = { vm.toggleShop(it.id) }, startLabel = "没买到",
                     modifier = Modifier.animateItem(),
@@ -376,19 +390,17 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
 
 @Composable
 private fun ShopRow(vm: AppViewModel, it: ShopItem, i: Int, n: Int) {
-    val toast = LocalToaster.current
-    GroupItem(i, n, onClick = { vm.toggleShop(it.id) }) {
-        Checkbox(checked = it.done, onCheckedChange = { _ -> vm.toggleShop(it.id) })
-        Column(Modifier.weight(1f)) {
-            Text(
-                it.name, style = MaterialTheme.typography.titleMedium,
-                color = if (it.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                textDecoration = if (it.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
-            )
-            if (it.forDishes.isNotEmpty()) Text("做 ${it.forDishes.joinToString("、")} 用", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = { vm.removeShop(it.id); toast.show("已删掉 ${it.name}") { vm.undo() } }) { Icon(Icons.Outlined.Close, "删掉") }
+    // 官方 SegmentedListItem 的“勾选”形态：整行点一下就勾上/取消
+    SegmentedListItem(
+        checked = it.done,
+        onCheckedChange = { _ -> vm.toggleShop(it.id) },
+        shapes = ListItemDefaults.segmentedShapes(i, n),
+        colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        leadingContent = { Checkbox(checked = it.done, onCheckedChange = null) },
+        supportingContent = if (it.forDishes.isNotEmpty()) ({ Text("做 ${it.forDishes.joinToString("、")} 用", maxLines = 1, overflow = TextOverflow.Ellipsis) }) else null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(it.name, textDecoration = if (it.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
     }
 }
 
@@ -435,8 +447,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
             ChoiceGroup(listOf("抽一道", "配一桌"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
         }
         item {
-            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).animateContentSize()) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).animateContentSize()) {
                 Column {
                     ListItem(
                         headlineContent = { Text("条件") },
@@ -449,8 +460,8 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                             ).joinToString(" / "), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         },
                         trailingContent = { Icon(if (showFilters) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null) },
-                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                        modifier = Modifier.clickableNoRipple { showFilters = !showFilters },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { showFilters = !showFilters },
                     )
                     if (showFilters) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("吃哪类", style = MaterialTheme.typography.labelLarge)
@@ -487,7 +498,6 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                 val r = current
                 ElevatedCard(
                     onClick = { r?.let { nav.open(DetailKey(it.id)) } },
-                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 36.dp, bottomEnd = 36.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(min = 240.dp),
                 ) {
                     if (r == null) {
@@ -495,7 +505,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                     } else Column(Modifier.padding(24.dp).animateContentSize()) {
                         Text("今日签", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
                         Text(r.name, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Tag(r.cat); val m = recipeMeta(r); if (m.isNotEmpty()) Text(m, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(recipeMeta(r), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (r.desc.isNotBlank()) Text(r.desc, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
                         val a = analyze(r, live, data.settings.seasonHave)
                         Text(
@@ -511,17 +521,16 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                     FilledTonalButton(onClick = {
                         val p = drawPool.filter { it.id != current?.id }
                         current = p.randomOrNull() ?: drawPool.randomOrNull()
-                    }, Modifier.weight(1f).height(56.dp)) { Icon(Icons.Outlined.Refresh, null); Spacer(Modifier.width(8.dp)); Text("换一个") }
-                    Button(onClick = { current?.let { nav.open(DetailKey(it.id)) } }, Modifier.weight(1.3f).height(56.dp), enabled = current != null) { Text("看做法") }
+                    }, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) {
+                        Icon(Icons.Outlined.Refresh, null); Spacer(Modifier.width(8.dp)); Text("换一个")
+                    }
+                    PrimaryButton("看做法", { current?.let { nav.open(DetailKey(it.id)) } }, Modifier.weight(1.3f), enabled = current != null)
                 }
             }
         } else {
             item {
                 val ppl = data.ppl
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    QtyStepper("$ppl 人", { vm.setPpl(ppl - 1) }, { vm.setPpl(ppl + 1) })
-                    Spacer(Modifier.weight(1f))
-                }
+                GroupItem(0, 1, trailing = { QtyControl("$ppl 人", { vm.setPpl(ppl - 1) }, { vm.setPpl(ppl + 1) }, "人数") }) { Text("几个人吃") }
             }
             item {
                 MealPlan(vm, data, live, ::pool, ::weighted)
@@ -565,30 +574,28 @@ private fun MealPlan(
         Text("${if (f.vegOnly) "全素" else "$meat 荤 $veg 素"}${if (soup > 0) " 1 汤" else ""}，这桌每人约 $perPerson 克蛋白质（估算，不含米饭）",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         meal.forEachIndexed { i, r ->
-            GroupItem(i, meal.size, onClick = { r?.let { nav.open(DetailKey(it.id)) } }) {
-                Text(kinds.getOrElse(i) { "" }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.width(28.dp))
-                Column(Modifier.weight(1f)) {
-                    if (r == null) Text("没有符合条件的菜", style = MaterialTheme.typography.bodyMedium)
-                    else {
-                        Text(r.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        val a = analyze(r, live, data.settings.seasonHave)
-                        Text((if (a != null) "有 ${a.used.joinToString("、") { it.name }}" else "冰箱里没有相关食材") + (r.minutes?.let { " · 约${it}分钟" } ?: ""),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                FilledTonalIconButton(onClick = {
-                    val others = meal.toMutableList(); others[i] = null
-                    meal = meal.toMutableList().also { it[i] = pick(kinds[i], others) }
-                }) { Icon(Icons.Outlined.Refresh, "换这道") }
-            }
+            val a = r?.let { analyze(it, live, data.settings.seasonHave) }
+            GroupItem(
+                i, meal.size, onClick = { r?.let { nav.open(DetailKey(it.id)) } },
+                leading = { Text(kinds.getOrElse(i) { "" }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary) },
+                supporting = r?.let { rr -> {
+                    Text((if (a != null) "有 ${a.used.joinToString("、") { it.name }}" else "冰箱里没有相关食材") + (rr.minutes?.let { " · 约${it}分钟" } ?: ""))
+                } },
+                trailing = {
+                    FilledTonalIconButton(onClick = {
+                        val others = meal.toMutableList(); others[i] = null
+                        meal = meal.toMutableList().also { it[i] = pick(kinds[i], others) }
+                    }, shapes = IconButtonDefaults.shapes()) { Icon(Icons.Outlined.Refresh, "换这道") }
+                },
+            ) { Text(r?.name ?: "没有符合条件的菜") }
         }
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = {
                 var n = 0
                 meal.filterNotNull().forEach { r -> n += vm.addToShop(missingFor(r, live, data.settings.seasonHave), r.name) }
                 toast.show(if (n > 0) "已加入清单 $n 样" else "这桌不缺主料，或者都已在清单里")
-            }, Modifier.weight(1f).height(56.dp)) { Text("缺的加入清单") }
-            Button(onClick = { meal = build() }, Modifier.weight(1f).height(56.dp)) { Text("整桌换") }
+            }, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("缺的加入清单") }
+            PrimaryButton("整桌换", { meal = build() }, Modifier.weight(1f))
         }
     }
 }
@@ -601,7 +608,6 @@ fun BookTab(vm: AppViewModel, data: AppData) {
     val nav = LocalNav.current
     val toast = LocalToaster.current
     val clip = LocalClipboardManager.current
-    var q by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable { mutableIntStateOf(0) }
     var cat by rememberSaveable { mutableStateOf("") }
     fun lastEaten(n: String) = data.eaten.filter { it.n == n }.maxOfOrNull { it.t } ?: 0L
@@ -609,14 +615,10 @@ fun BookTab(vm: AppViewModel, data: AppData) {
     if (mode == 1) list = list.filter { it.name in data.favs }
     if (mode == 2) list = list.filter { lastEaten(it.name) > 0 }.sortedByDescending { lastEaten(it.name) }
     if (cat.isNotEmpty()) list = list.filter { it.cat == cat }
-    if (q.isNotBlank()) list = list.filter { r -> r.name.contains(q.trim()) || r.ingredients.any { it.contains(q.trim()) } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            SearchField(q, { q = it }, "搜菜名或食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
-        }
-        item {
-            ChoiceGroup(listOf("全部", "收藏", "吃过"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            ChoiceGroup(listOf("全部", "收藏", "吃过"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
         }
         item { ChipRow(listOf("") + K.RCATS, { it == cat }, { cat = if (cat == it) "" else it }, label = { it.ifEmpty { "全部" } }, modifier = Modifier.padding(top = 8.dp)) }
         item {
@@ -632,14 +634,29 @@ fun BookTab(vm: AppViewModel, data: AppData) {
             EmptyCard(when (mode) {
                 1 -> "还没有收藏。打开一道菜，点右上角的心。"
                 2 -> "还没有记录。做完一道菜点“做了这道”会记在这里。"
-                else -> "没找到，换个词试试，或者点右下角“新菜”自己加。"
+                else -> "这一类还没有菜。点右下角的加号自己写一道。"
             })
         }
         itemsIndexed(list, key = { _, r -> r.id }) { i, r ->
             val le = lastEaten(r.name)
-            RecipeRow(r, i, list.size, r.name in data.favs, sub = if (mode == 2 && le > 0) ({
-                Text(agoText(le) + "吃过", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }) else null) { nav.open(DetailKey(r.id)) }
+            RecipeRow(r, i, list.size, r.name in data.favs, sub = if (mode == 2 && le > 0) ({ Text(agoText(le) + "吃过") }) else null) { nav.open(DetailKey(r.id)) }
+        }
+    }
+}
+
+/** 顶栏搜索展开后的结果：按菜名或原料找菜 */
+@Composable
+fun BookSearchResults(vm: AppViewModel, data: AppData, query: String, close: () -> Unit) {
+    val recipes by vm.recipes.collectAsState()
+    val nav = LocalNav.current
+    val q = query.trim()
+    val hits = if (q.isEmpty()) emptyList() else recipes.filter { r -> r.name.contains(q) || r.ingredients.any { it.contains(q) } }.take(100)
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+        if (q.isEmpty()) item { SearchHint("输入菜名或食材，比如“排骨”“土豆”") }
+        else if (hits.isEmpty()) item { SearchHint("没找到“$q”相关的菜") }
+        itemsIndexed(hits, key = { _, r -> r.id }) { i, r ->
+            GroupItem(i, hits.size, onClick = { close(); nav.open(DetailKey(r.id)) },
+                supporting = { Text(recipeMeta(r), maxLines = 1, overflow = TextOverflow.Ellipsis) }) { Text(r.name) }
         }
     }
 }

@@ -64,7 +64,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
                     IconButton(onClick = { nav.open(EditKey(r.id)) }) { Icon(Icons.Outlined.Edit, "编辑") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "更多") }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("复制为文字") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = {
                         menu = false; clip.setText(AnnotatedString(RecipeText.format(r))); toast.show("已复制，可以发给家人或贴给 GPT 改")
                     })
@@ -79,29 +79,26 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
         },
     ) { pad ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = pad.calculateBottomPadding() + 24.dp)) {
-            item {
-                FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Tag(r.cat)
-                    r.protein?.let {
-                        if (it >= K.HIGH_PROTEIN) Tag("高蛋白 ${it}g", cs.primaryContainer, cs.onPrimaryContainer)
-                        else Tag("蛋白 ${it}g", cs.surfaceContainerHighest, cs.onSurface)
-                    }
-                    r.kcal?.let { Tag("约 $it 千卡", cs.surfaceContainerHighest, cs.onSurface) }
-                    r.diff?.let { Tag("难度 " + "★".repeat(it), cs.tertiaryContainer, cs.onTertiaryContainer) }
-                    r.minutes?.let { Tag("约 $it 分钟", cs.surfaceContainerHighest, cs.onSurface) }
-                    if (r.spicy) Tag("辣", cs.errorContainer, cs.onErrorContainer)
-                    if (r.meat) Tag("含肉", cs.surfaceContainerHighest, cs.onSurface)
-                }
-            }
             if (r.desc.isNotBlank()) item {
-                Text(r.desc, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                Text(r.desc, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyLarge)
+            }
+            // 基本信息：官方分段列表，一行一项
+            val facts = listOfNotNull(
+                r.protein?.let { "蛋白质" to ("每人约 ${it} 克" + if (it >= K.HIGH_PROTEIN) "（高蛋白）" else "") },
+                r.kcal?.let { "热量" to "每人约 $it 千卡" },
+                r.diff?.let { "难度" to "★".repeat(it) },
+                r.minutes?.let { "时间" to "约 $it 分钟" },
+                listOfNotNull(if (r.spicy) "辣" else "不辣", if (r.meat) "含肉" else "素").let { "口味" to it.joinToString(" · ") },
+            )
+            itemsIndexed(facts) { i, (k, v) ->
+                GroupItem(i, facts.size, trailing = { Text(v, style = MaterialTheme.typography.bodyMedium) }) { Text(k) }
             }
             r.source?.let { src ->
                 item {
                     FilledTonalButton(onClick = {
                         if (src.startsWith("http")) runCatching { uri.openUri(src) }.onFailure { clip.setText(AnnotatedString(src)); toast.show("打不开，链接已复制") }
                         else { clip.setText(AnnotatedString(src)); toast.show("来源已复制") }
-                    }, Modifier.padding(horizontal = 16.dp)) {
+                    }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Icon(Icons.Outlined.PlayCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                         Text(if (src.startsWith("http")) "看原视频" else "来源：$src", maxLines = 1)
                     }
@@ -109,11 +106,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             }
             item { SectionTitle("对照冰箱") }
             itemsIndexed(r.ingredients) { i, line ->
-                GroupItem(i, r.ingredients.size) {
-                    Text(line, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.width(8.dp))
-                    IngStatus(line, live)
-                }
+                GroupItem(i, r.ingredients.size, trailing = { IngStatus(line, live) }) { Text(line) }
             }
             item {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
@@ -132,27 +125,17 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             }
             if (r.amounts.isNotEmpty()) {
                 item { SectionTitle("用量") }
-                itemsIndexed(r.amounts) { i, line -> GroupItem(i, r.amounts.size) { Text(line, style = MaterialTheme.typography.bodyLarge) } }
+                itemsIndexed(r.amounts) { i, line -> GroupItem(i, r.amounts.size) { Text(line) } }
             }
             item { SectionTitle("做法") }
             itemsIndexed(r.steps) { i, s ->
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Surface(shape = CircleShape, color = cs.primaryContainer, modifier = Modifier.size(32.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Text("${i + 1}", color = cs.onPrimaryContainer, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold) }
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Text(s, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 4.dp))
-                }
+                GroupItem(i, r.steps.size, leading = {
+                    Text("${i + 1}", style = MaterialTheme.typography.titleMedium, color = cs.primary, fontWeight = FontWeight.Bold)
+                }) { Text(s) }
             }
             if (r.tips.isNotEmpty()) {
                 item { SectionTitle("小贴士") }
-                item {
-                    Surface(shape = RoundedCornerShape(24.dp), color = cs.secondaryContainer, modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
-                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            r.tips.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = cs.onSecondaryContainer) }
-                        }
-                    }
-                }
+                itemsIndexed(r.tips) { i, t -> GroupItem(i, r.tips.size) { Text(t, style = MaterialTheme.typography.bodyMedium) } }
             }
             item {
                 val le = data.eaten.filter { it.n == r.name }.maxOfOrNull { it.t }
@@ -180,7 +163,7 @@ private fun IngStatus(line: String, live: List<InvItem>) {
         val ei = K.expInfo(K.daysLeft(it.exp))
         Column(horizontalAlignment = Alignment.End) {
             Text("有 ${K.fmtQ(it.qty)}${it.unit}", color = cs.primary, style = MaterialTheme.typography.labelLarge)
-            if (ei != null && ei.second != K.Level.OK) Text(ei.first, color = cs.error, style = MaterialTheme.typography.labelSmall)
+            if (ei != null && ei.second != K.Level.OK) Text(ei.first, color = expColor(ei.second), style = MaterialTheme.typography.labelSmall)
         }
         return
     }
@@ -188,7 +171,7 @@ private fun IngStatus(line: String, live: List<InvItem>) {
     when {
         nm.isEmpty() || K.isNonFood(nm) -> Unit
         K.isSeason(nm) -> Text("调料", color = cs.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
-        else -> Tag("缺", cs.errorContainer, cs.onErrorContainer)
+        else -> Text("缺", color = cs.error, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -251,8 +234,8 @@ fun RecipeEditScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             error?.let {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-                    Text(it, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
             OutlinedTextField(name, { name = it; error = null }, label = { Text("菜名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -266,11 +249,9 @@ fun RecipeEditScreen(
                 minutes, { minutes = it.filter { c -> c.isDigit() } }, label = { Text("大约几分钟") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("辣", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); HapticSwitch(spicy, { spicy = it })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("含肉（“只要素的”会排除）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); HapticSwitch(meat, { meat = it })
+            Column {
+                SwitchItem(0, 2, spicy, { spicy = it }, "辣", inset = false)
+                SwitchItem(1, 2, meat, { meat = it }, "含肉", "“只要素的”会排除", inset = false)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -310,7 +291,7 @@ private fun ListEditor(title: String, hint: String, list: SnapshotStateList<Stri
                 OutlinedTextField(
                     value = v, onValueChange = { list[i] = it },
                     placeholder = { Text(hint) }, modifier = Modifier.weight(1f),
-                    singleLine = !numbered, shape = RoundedCornerShape(16.dp),
+                    singleLine = !numbered,
                 )
                 IconButton(onClick = { list.removeAt(i) }) { Icon(Icons.Outlined.RemoveCircleOutline, "删掉这一行") }
             }

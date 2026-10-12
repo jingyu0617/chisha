@@ -63,31 +63,16 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
     AppScaffold(title = "设置", snackbar = snackbar, onBack = nav.back) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
             SectionTitle("健身")
-            GroupItem(0, 1, onClick = { vm.setMuscle(!data.settings.muscle) }) {
-                Column(Modifier.weight(1f)) {
-                    Text("增肌：优先推荐高蛋白", style = MaterialTheme.typography.bodyLarge)
-                    Text("“做什么”和抽签会把蛋白质多的菜排前面。每人份 ${K.HIGH_PROTEIN} 克以上算高蛋白（估算值）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                HapticSwitch(data.settings.muscle, { vm.setMuscle(it) })
-            }
+            SwitchItem(0, 1, data.settings.muscle, { vm.setMuscle(it) }, "增肌：优先推荐高蛋白",
+                "“做什么”和抽签会把蛋白质多的菜排前面。每人份 ${K.HIGH_PROTEIN} 克以上算高蛋白（估算值）")
 
             SectionTitle("提醒")
-            GroupItem(0, 1, onClick = { vm.setNotify(!data.settings.notify) }) {
-                Column(Modifier.weight(1f)) {
-                    Text("每天早上 9 点提醒", style = MaterialTheme.typography.bodyLarge)
-                    Text("有食材快到期、蛋白粉咖啡豆快用完时发通知；没事就不打扰", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                HapticSwitch(data.settings.notify, { vm.setNotify(it) })
-            }
+            SwitchItem(0, 1, data.settings.notify, { vm.setNotify(it) }, "每天早上 9 点提醒",
+                "有食材快到期、蛋白粉咖啡豆快用完时发通知；没事就不打扰")
 
             SectionTitle("调料")
-            GroupItem(0, 1, onClick = { vm.setSeasonHave(!data.settings.seasonHave) }) {
-                Column(Modifier.weight(1f)) {
-                    Text("调料默认家里有", style = MaterialTheme.typography.bodyLarge)
-                    Text("盐、生抽、葱姜蒜、花椒这类不算“缺”，也不进购物清单", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                HapticSwitch(data.settings.seasonHave, { vm.setSeasonHave(it) })
-            }
+            SwitchItem(0, 1, data.settings.seasonHave, { vm.setSeasonHave(it) }, "调料默认家里有",
+                "盐、生抽、葱姜蒜、花椒这类不算“缺”，也不进购物清单")
 
             SectionTitle("菜谱文件", recipes.size)
             Row3(Icons.Outlined.ContentPaste, "从剪贴板导入", "GPT 整理好的菜谱文字，复制后点这里", 0, 2) { vm.clearDrafts(); nav.open(ImportKey) }
@@ -108,7 +93,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
             Hint("在网页版的“设置与备份”里点“生成备份文本”并复制，粘贴到下面。会替换这里冰箱和清单的内容。")
             OutlinedTextField(
                 webText, { webText = it }, placeholder = { Text("粘贴备份文本") }, minLines = 3, maxLines = 6,
-                shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
             FilledTonalButton(onClick = {
                 vm.importWebBackup(webText).fold(
@@ -163,12 +148,5 @@ private fun Hint(text: String) {
 
 @Composable
 private fun Row3(icon: ImageVector, title: String, sub: String, i: Int, n: Int, onClick: () -> Unit) {
-    GroupItem(i, n, onClick = onClick) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    GroupItem(i, n, onClick = onClick, leading = { Icon(icon, null) }, supporting = { Text(sub) }) { Text(title) }
 }

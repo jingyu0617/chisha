@@ -77,7 +77,7 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
             }
             OutlinedTextField(
                 text, { text = it }, placeholder = { Text("也可以直接把菜谱文字粘在这里") }, minLines = 4, maxLines = 10,
-                shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             )
             if (text.isNotBlank()) TextButton(onClick = { recognize(text) }, Modifier.padding(horizontal = 8.dp)) { Text("识别这段文字") }
 
@@ -85,10 +85,7 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
             drafts.forEachIndexed { i, d ->
                 val r = d.recipe
                 val exists = vm.draftNameExists(r.name)
-                Surface(
-                    shape = RoundedCornerShape(24.dp), color = cs.surfaceContainer,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                ) {
+                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Column(Modifier.padding(start = 6.dp, end = 12.dp, top = 6.dp, bottom = 12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(d.selected, { vm.toggleDraft(i) }, enabled = d.errors.isEmpty())
@@ -96,13 +93,12 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
                                 Text(r.name.ifBlank { "（没有菜名）" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     listOfNotNull(
-                                        "原料 ${r.ingredients.size} 样", "做法 ${r.steps.size} 步",
+                                        r.cat, "原料 ${r.ingredients.size} 样", "做法 ${r.steps.size} 步",
                                         r.minutes?.let { "约${it}分钟" }, r.protein?.let { "蛋白 ${it}g" },
                                     ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                                 )
                             }
-                            Tag(r.cat)
                         }
                         Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             d.errors.forEach { Text("✕ $it，改一改才能导入", color = cs.error, style = MaterialTheme.typography.bodySmall) }

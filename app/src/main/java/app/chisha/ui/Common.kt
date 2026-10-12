@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class, ExperimentalSharedTransitionApi::class)
 
 package app.chisha.ui
 
@@ -10,12 +10,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,7 +37,6 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import app.chisha.K
 import app.chisha.Recipe
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /** 底部提示条，可带“撤销” */
@@ -104,21 +102,79 @@ fun SectionTitle(text: String, count: Int? = null, modifier: Modifier = Modifier
 }
 
 /**
- * 分组列表的一行。
- * 官方 Material 3 Expressive 的 SegmentedListItem（分段圆角、按压形变、标准配色）。
+ * 分组列表的一行：官方 Material 3 Expressive 的 SegmentedListItem。
+ * 按官方示例：底色用 surfaceContainer（默认是和页面一样的 surface，会看不出分组），行间留 SegmentedGap。
+ * 标题、副标题、前后内容都放进官方的槽位，不自己排版。
+ * inset = false 时不加左右边距和行间距（外面套了滑动删除时由外层负责）。
  */
 @Composable
 fun GroupItem(
     index: Int,
     size: Int,
     onClick: (() -> Unit)? = null,
-    content: @Composable RowScope.() -> Unit,
+    leading: (@Composable () -> Unit)? = null,
+    supporting: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    inset: Boolean = true,
+    headline: @Composable () -> Unit,
 ) {
     val shapes = ListItemDefaults.segmentedShapes(index, size)
-    val mod = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 2.dp)
-    val body: @Composable () -> Unit = { Row(verticalAlignment = Alignment.CenterVertically, content = content) }
-    if (onClick != null) SegmentedListItem(onClick = onClick, shapes = shapes, modifier = mod, content = body)
-    else SegmentedListItem(shapes = shapes, modifier = mod, content = body)
+    val colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    val mod = if (inset) Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = ListItemDefaults.SegmentedGap)
+    else Modifier.fillMaxWidth()
+    if (onClick != null) SegmentedListItem(
+        onClick = onClick, shapes = shapes, modifier = mod, colors = colors,
+        leadingContent = leading, supportingContent = supporting, trailingContent = trailing, content = headline,
+    ) else SegmentedListItem(
+        shapes = shapes, modifier = mod, colors = colors,
+        leadingContent = leading, supportingContent = supporting, trailingContent = trailing, content = headline,
+    )
+}
+
+/**
+ * 带开关的列表行：官方 SegmentedListItem 的“可勾选”形态，整行都能点，右边是官方 Switch。
+ */
+@Composable
+fun SwitchItem(index: Int, size: Int, checked: Boolean, onCheckedChange: (Boolean) -> Unit, title: String, sub: String? = null, inset: Boolean = true) {
+    val hp = rememberHaptics()
+    SegmentedListItem(
+        checked = checked,
+        onCheckedChange = { hp.toggle(it); onCheckedChange(it) },
+        shapes = ListItemDefaults.segmentedShapes(index, size),
+        colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        supportingContent = sub?.let { { Text(it) } },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null) },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = if (inset) 16.dp else 0.dp).padding(bottom = ListItemDefaults.SegmentedGap),
+    ) { Text(title) }
+}
+
+/** 列表行的外形（滑动删除的底色要裁成同样的形状） */
+@Composable
+fun groupShape(index: Int, size: Int) = ListItemDefaults.segmentedShapes(index, size).shape
+
+/**
+ * 提示卡片：官方 Card（默认配色），左边一个图标表示轻重，下面可以放一个按钮。
+ * 不再用大块红底/紫底，深色模式下也不刺眼。
+ */
+@Composable
+fun NoticeCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String? = null,
+    urgent: Boolean = false,
+    action: (@Composable () -> Unit)? = null,
+) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = if (urgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                if (body != null) Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                if (action != null) Box(Modifier.padding(top = 8.dp)) { action() }
+            }
+        }
+    }
 }
 
 /* ======================= 芯片 ======================= */
@@ -198,68 +254,25 @@ fun HapticSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Switch(checked = checked, onCheckedChange = { hp.toggle(it); onCheckedChange(it) })
 }
 
-/* ======================= 搜索 ======================= */
-
-/** 搜索框：官方 SearchBar */
-@Composable
-fun SearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
-    val tfs = rememberTextFieldState(query)
-    val sbs = rememberSearchBarState()
-    LaunchedEffect(tfs) { snapshotFlow { tfs.text.toString() }.collectLatest { onQueryChange(it) } }
-    SearchBar(
-        state = sbs,
-        inputField = {
-            SearchBarDefaults.InputField(
-                textFieldState = tfs, searchBarState = sbs, onSearch = { onQueryChange(it) },
-                placeholder = { Text(placeholder) },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-            )
-        },
-        modifier = modifier,
-    )
-}
-
 /* ======================= 小部件 ======================= */
 
+/** 保质期的说明文字和颜色（过期红色、快到期用强调色，其余灰色）——放在列表行的副标题里 */
 @Composable
-fun ExpBadge(exp: String?) {
-    val info = K.expInfo(K.daysLeft(exp)) ?: return
-    val cs = MaterialTheme.colorScheme
-    val (bg, fg) = when (info.second) {
-        K.Level.BAD -> cs.errorContainer to cs.onErrorContainer
-        K.Level.WARN -> cs.tertiaryContainer to cs.onTertiaryContainer
-        K.Level.OK -> Color.Transparent to cs.onSurfaceVariant
-    }
-    Text(
-        info.first,
-        style = MaterialTheme.typography.labelSmall,
-        color = fg,
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
-            .padding(horizontal = if (info.second == K.Level.OK) 0.dp else 6.dp, vertical = 1.dp),
-    )
-}
-
-@Composable
-fun Tag(text: String, container: Color = MaterialTheme.colorScheme.secondaryContainer, content: Color = MaterialTheme.colorScheme.onSecondaryContainer) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelSmall,
-        color = content,
-        maxLines = 1,
-        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(container).padding(horizontal = 8.dp, vertical = 2.dp),
-    )
+fun expColor(level: K.Level?) = when (level) {
+    K.Level.BAD -> MaterialTheme.colorScheme.error
+    K.Level.WARN -> MaterialTheme.colorScheme.tertiary
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
 fun recipeMeta(r: Recipe): String = listOfNotNull(
+    r.cat,
     r.protein?.let { "蛋白${it}g" },
     r.diff?.let { "★".repeat(it) },
     r.minutes?.let { "约${it}分钟" },
     if (r.spicy) "辣" else null,
 ).joinToString(" · ")
 
-/** 菜谱卡片；菜名带共享元素，点进详情时会飞到标题位置 */
+/** 菜谱一行；菜名带共享元素，点进详情时会飞到标题位置 */
 @Composable
 fun RecipeRow(
     r: Recipe,
@@ -269,48 +282,38 @@ fun RecipeRow(
     sub: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    GroupItem(index, size, onClick) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    r.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.sharedRecipe(r.id),
-                )
-                if (fav) {
-                    Spacer(Modifier.width(4.dp))
-                    Text("★", color = MaterialTheme.colorScheme.tertiary, fontSize = 14.sp)
-                }
-            }
-            if (sub != null) sub() else {
-                val m = recipeMeta(r)
-                if (m.isNotEmpty()) Text(m, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        Tag(r.cat)
+    GroupItem(
+        index, size, onClick,
+        supporting = sub ?: recipeMeta(r).takeIf { it.isNotEmpty() }?.let { m -> { Text(m) } },
+        trailing = if (fav) ({ Icon(Icons.Filled.Favorite, "已收藏", tint = MaterialTheme.colorScheme.tertiary) }) else null,
+    ) {
+        Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.sharedRecipe(r.id))
     }
 }
 
 @Composable
 fun EmptyCard(text: String, modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = modifier.fillMaxWidth().padding(16.dp),
-    ) {
-        Text(text, Modifier.padding(28.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedCard(modifier.fillMaxWidth().padding(16.dp)) {
+        Text(text, Modifier.padding(24.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** 数量加减器（图标按钮带读屏说明，每次加减有轻微震动） */
+/**
+ * 数量加减。Material 3 没有现成的“加减器”组件，这里用两个官方的 FilledTonalIconButton（Expressive 超小号，
+ * 按下会变形）加中间的数字拼成；触摸区域仍是官方保证的 48dp。
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun QtyStepper(text: String, onMinus: () -> Unit, onPlus: () -> Unit, what: String = "") {
+fun QtyControl(text: String, onMinus: () -> Unit, onPlus: () -> Unit, what: String = "") {
     val hp = rememberHaptics()
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { hp.tick(); onMinus() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Remove, "减少$what", Modifier.size(18.dp)) }
-            Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.widthIn(min = 48.dp), maxLines = 1, textAlign = TextAlign.Center)
-            IconButton(onClick = { hp.tick(); onPlus() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Add, "增加$what", Modifier.size(18.dp)) }
+    val size = IconButtonDefaults.extraSmallContainerSize()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalIconButton(onClick = { hp.tick(); onMinus() }, shapes = IconButtonDefaults.shapes(), modifier = Modifier.size(size)) {
+            Icon(Icons.Filled.Remove, "减少$what", Modifier.size(IconButtonDefaults.extraSmallIconSize))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge, modifier = Modifier.widthIn(min = 52.dp).padding(horizontal = 4.dp), maxLines = 1, textAlign = TextAlign.Center)
+        FilledTonalIconButton(onClick = { hp.tick(); onPlus() }, shapes = IconButtonDefaults.shapes(), modifier = Modifier.size(size)) {
+            Icon(Icons.Filled.Add, "增加$what", Modifier.size(IconButtonDefaults.extraSmallIconSize))
         }
     }
 }

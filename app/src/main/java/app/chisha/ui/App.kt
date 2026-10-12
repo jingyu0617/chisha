@@ -264,6 +264,12 @@ private fun Home(
             snackbar = snackbar,
             subtitle = if (tab == 0) today else null,
             actions = { IconButton(onClick = { nav.open(SettingsKey) }) { Icon(Icons.Outlined.Settings, "设置") } },
+            // 冰箱和菜谱：顶栏是官方的搜索栏，点开全屏搜索
+            search = when (tab) {
+                0 -> SearchSpec("在冰箱里找食材") { q, close -> FridgeSearchResults(vm, data, q, close) }
+                4 -> SearchSpec("搜菜名或食材") { q, close -> BookSearchResults(vm, data, q, close) }
+                else -> null
+            },
             fab = {
                 when (tab) {
                     0 -> FabMenu(buildList {

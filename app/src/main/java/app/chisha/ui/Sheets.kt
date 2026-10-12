@@ -150,24 +150,17 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
                 units.forEach { u -> FilterChip(selected = u == unit, onClick = { unit = u }, label = { Text(u) }) }
             }
 
-            // 消耗品
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("每天固定用", style = MaterialTheme.typography.bodyLarge)
-                            Text("蛋白粉、咖啡豆这类：按天自动扣，快用完自动进清单", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 消耗品：官方开关行
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SwitchItem(0, 1, consumable, {
+                        consumable = it
+                        if (it) {
+                            val cd = K.consumableDefaults(name.trim())
+                            if (dose.isBlank()) dose = K.fmtQ(cd?.first ?: K.stepOf(unit))
+                            if (cd != null) perDay = K.fmtQ(cd.second)
+                            if (K.isCoffee(name.trim()) && roast == null) roast = K.ymd(0)
                         }
-                        HapticSwitch(consumable, {
-                            consumable = it
-                            if (it) {
-                                val cd = K.consumableDefaults(name.trim())
-                                if (dose.isBlank()) dose = K.fmtQ(cd?.first ?: K.stepOf(unit))
-                                if (cd != null) perDay = K.fmtQ(cd.second)
-                                if (K.isCoffee(name.trim()) && roast == null) roast = K.ymd(0)
-                            }
-                        })
-                    }
+                    }, "每天固定用", "蛋白粉、咖啡豆这类：按天自动扣，快用完自动进清单", inset = false)
                     if (consumable) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
@@ -191,7 +184,6 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
                             }
                         }
                     }
-                }
             }
 
             Text("放在哪", style = MaterialTheme.typography.labelLarge)
@@ -213,11 +205,11 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
             Spacer(Modifier.height(4.dp))
             if (item == null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { save(true) }, Modifier.weight(1f).height(52.dp)) { Text("保存，继续添加") }
-                    Button(onClick = { save(false) }, Modifier.weight(1f).height(52.dp)) { Text("保存") }
+                    OutlinedButton(onClick = { save(true) }, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("保存，继续添加") }
+                    Button(onClick = { save(false) }, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("保存") }
                 }
             } else {
-                Button(onClick = { save(false) }, Modifier.fillMaxWidth().height(52.dp)) { Text("保存") }
+                Button(onClick = { save(false) }, Modifier.fillMaxWidth().heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("保存") }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = {
                         val n = vm.addToShop(listOf(item.name), null)
@@ -276,37 +268,34 @@ fun DeductSheet(vm: AppViewModel, data: AppData, r: Recipe, onDismiss: () -> Uni
         ) {
             Text("用了多少", style = MaterialTheme.typography.headlineSmall)
             Text(r.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("做了几份", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                QtyStepper("$servings 份", { if (servings > 1) servings-- }, { if (servings < 10) servings++ })
+            Column {
+                GroupItem(0, 1, inset = false, trailing = {
+                    QtyControl("$servings 份", { if (servings > 1) servings-- }, { if (servings < 10) servings++ }, "份数")
+                }) { Text("做了几份") }
             }
             if (rows.isEmpty()) {
                 Text("这道菜没用到冰箱里记着的食材，点“只记录”就好。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text("按菜谱估了用量，改成实际用的就行。填 0 表示没用这样，用完的会移出冰箱。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                rows.forEachIndexed { i, (it, _) ->
-                    GroupItem(i, rows.size) {
-                        Column(Modifier.weight(1f)) {
-                            Text(it.name, style = MaterialTheme.typography.titleMedium)
-                            Text("现有 ${K.fmtQ(it.qty)} ${it.unit}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        OutlinedTextField(
-                            value = values[it.id] ?: "", onValueChange = { v -> values[it.id] = v.filter { c -> c.isDigit() || c == '.' } },
-                            singleLine = true, suffix = { Text(it.unit) }, modifier = Modifier.width(120.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        )
-                    }
+                // 每样一个官方输入框：标签是名称，下方写现有多少
+                rows.forEach { (it, _) ->
+                    OutlinedTextField(
+                        value = values[it.id] ?: "", onValueChange = { v -> values[it.id] = v.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("${it.name} 用了") }, supportingText = { Text("现有 ${K.fmtQ(it.qty)} ${it.unit}") },
+                        singleLine = true, suffix = { Text(it.unit) }, modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    )
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 4.dp)) {
-                OutlinedButton(onClick = { vm.markEaten(r.name); toast.show("记下了：今天吃${r.name}"); close() }, Modifier.weight(1f).height(52.dp)) { Text("只记录，不扣") }
+                OutlinedButton(onClick = { vm.markEaten(r.name); toast.show("记下了：今天吃${r.name}"); close() }, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("只记录，不扣") }
                 Button(onClick = {
                     val uses = rows.associate { (it, _) -> it.id to (values[it.id]?.toDoubleOrNull() ?: 0.0) }
                     val gone = vm.deduct(uses, r.name)
                     toast.show(if (gone.isNotEmpty()) "已扣库存，${gone.joinToString("、")} 用完了" else "已扣库存") { vm.undo() }
                     close()
-                }, Modifier.weight(1.3f).height(52.dp), enabled = rows.isNotEmpty()) { Text("确认扣减") }
+                }, Modifier.weight(1.3f).heightIn(min = ButtonDefaults.MediumContainerHeight), enabled = rows.isNotEmpty()) { Text("确认扣减") }
             }
         }
     }
@@ -339,13 +328,9 @@ fun StockSheet(vm: AppViewModel, data: AppData, onDismiss: () -> Unit) {
             rows.forEachIndexed { i, r ->
                 val loc = K.guessLoc(r.item.name, r.item.cat)
                 var menu by remember(r.item.id) { mutableStateOf(false) }
-                GroupItem(i, rows.size) {
-                    Column(Modifier.weight(1f)) {
-                        Text(r.item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (r.on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
-                        Text(if (r.on) "${r.item.cat} · $loc · 约${K.daysText(K.guessDays(r.item.name, r.item.cat, loc))}" else "不放进冰箱",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                GroupItem(i, rows.size, inset = false,
+                    supporting = { Text(if (r.on) "${r.item.cat} · $loc · 约${K.daysText(K.guessDays(r.item.name, r.item.cat, loc))}" else "不放进冰箱") },
+                    trailing = { Row(verticalAlignment = Alignment.CenterVertically) {
                     if (r.on) {
                         OutlinedTextField(
                             value = texts[r.item.id] ?: "", onValueChange = { v -> texts[r.item.id] = v.filter { c -> c.isDigit() || c == '.' } },
@@ -364,16 +349,20 @@ fun StockSheet(vm: AppViewModel, data: AppData, onDismiss: () -> Unit) {
                     IconButton(onClick = { rows[i] = r.copy(on = !r.on) }) {
                         Icon(if (r.on) Icons.Outlined.Close else Icons.Outlined.Undo, if (r.on) "不放进冰箱" else "放进冰箱")
                     }
+                } },
+                ) {
+                    Text(r.item.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = if (r.on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = close, Modifier.weight(1f).height(52.dp)) { Text("取消") }
+                OutlinedButton(onClick = close, Modifier.weight(1f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("取消") }
                 Button(onClick = {
                     val final = rows.map { it.copy(qty = texts[it.item.id]?.toDoubleOrNull() ?: 0.0) }
                     val n = vm.stockIn(final)
                     toast.show(if (n > 0) "$n 样已放进冰箱" else "已清掉已买") { vm.undo() }
                     close()
-                }, Modifier.weight(1.4f).height(52.dp)) { Text("放进冰箱") }
+                }, Modifier.weight(1.4f).heightIn(min = ButtonDefaults.MediumContainerHeight)) { Text("放进冰箱") }
             }
         }
     }
