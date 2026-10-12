@@ -1,13 +1,12 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
     namespace = "app.chisha"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.chisha"
@@ -43,10 +42,6 @@ android {
     buildFeatures {
         compose = true
     }
-}
-
-kotlin {
-    jvmToolchain(17)
 }
 
 dependencies {
