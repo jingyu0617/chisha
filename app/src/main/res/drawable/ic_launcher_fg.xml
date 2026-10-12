@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一只碗，冒着两缕热气 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF2E6A57"
+        android:pathData="M30,54 L78,54 C78,68 67,78 54,78 C41,78 30,68 30,54 Z" />
+    <path
+        android:fillColor="#FF2E6A57"
+        android:pathData="M44,80 L64,80 L62,84 L46,84 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB5651D"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M47,48 C44,44 50,40 47,34" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB5651D"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M60,48 C57,44 63,40 60,34" />
+</vector>
