@@ -54,13 +54,16 @@ jobs:
           disable-animations: true
           script: bash .github/smoke.sh
 
-      - name: Report crash
+      - name: Save crash log to ci-logs branch
         if: failure()
         shell: bash
         run: |
-          [ -f crash.txt ] || exit 0
-          msg=$(cat crash.txt | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
-          echo "::error title=crash::${msg}"
+          mkdir -p /tmp/ci && cd /tmp/ci
+          for f in crash.txt monkey.log logcat.txt build.log; do [ -f "$GITHUB_WORKSPACE/$f" ] && tail -c 200000 "$GITHUB_WORKSPACE/$f" > "$f"; done
+          [ -f "$GITHUB_WORKSPACE/logcat.txt" ] && grep -E "AndroidRuntime|FATAL|Exception|app.chisha" "$GITHUB_WORKSPACE/logcat.txt" | tail -300 > logcat-app.txt
+          git init -q && git checkout -q -b ci-logs
+          git -c user.name=ci -c user.email=ci@local add -A && git -c user.name=ci -c user.email=ci@local commit -qm "run ${{ github.run_number }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-logs
 
       - name: Name APK
         run: cp out/app.apk "out/chisha-v1.0.${{ github.run_number }}.apk"
