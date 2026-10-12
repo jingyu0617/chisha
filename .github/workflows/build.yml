@@ -34,7 +34,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          msg=$(grep -E "^e: |error:|What went wrong|Could not|> " build.log | head -60 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          msg=$(grep -E "^e: |error:|What went wrong|Could not|Dependency |compileSdk|Android Gradle plugin|requires|^ +[0-9]+\\. " build.log | grep -v "^> Task" | sort -u | head -40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::error title=build::${msg}"
 
       - name: Rename APK
