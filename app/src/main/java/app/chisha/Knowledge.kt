@@ -224,7 +224,7 @@ object K {
     fun isSeason(nm: String): Boolean {
         if (SEASON_ANY.containsMatchIn(nm)) return true
         if (nm.length <= 3 && AROMATIC.containsMatchIn(nm) && !NOT_AROMATIC.containsMatchIn(nm)) return true
-        return SEASON.containsMatchIn(nm) || (SEASON_END.containsMatchIn(nm) && !NOT_SEASON.containsMatchIn(nm))
+        return SEASON.matches(nm) || (SEASON_END.containsMatchIn(nm) && !NOT_SEASON.containsMatchIn(nm))
     }
 
     fun isNonFood(nm: String) = NONFOOD.containsMatchIn(nm)
