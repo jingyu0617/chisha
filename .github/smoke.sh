@@ -5,9 +5,14 @@ adb install -r out/app.apk
 adb logcat -c
 adb shell pm grant app.chisha android.permission.POST_NOTIFICATIONS || true
 mkdir -p shots
+# 等模拟器桌面完全起来，避免“桌面无响应”弹窗
+sleep 40
+adb shell input keyevent 3
+sleep 5
 
 # 按屏幕上的文字（或读屏说明）找到控件并点击；可以给多个候选，点第一个找到的
 tap_text() {
+  clear_dialogs
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
   local b
@@ -25,7 +30,24 @@ EOF
 )
   if [ -n "$b" ]; then adb shell input tap $b; sleep 2; else echo "找不到：$*"; fi
 }
-shot() { adb exec-out screencap -p > "shots/$1.png"; }
+# 模拟器自己的“桌面无响应”之类系统弹窗：点“等待”关掉
+clear_dialogs() {
+  for i in 1 2 3; do
+    adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+    grep -q "isn't responding\|没有响应" /tmp/ui.xml 2>/dev/null || return 0
+    b=$(python3 -c "
+import re
+x=open('/tmp/ui.xml',encoding='utf-8').read()
+for n in re.findall(r'<node [^>]*>',x):
+    if 'text=\"Wait\"' in n or 'text=\"等待\"' in n:
+        a=list(map(int,re.findall(r'\\d+',re.search(r'bounds=\"([^\"]+)\"',n).group(1))));print((a[0]+a[2])//2,(a[1]+a[3])//2);break
+")
+    [ -n "$b" ] && adb shell input tap $b
+    sleep 2
+  done
+}
+shot() { clear_dialogs; adb exec-out screencap -p > "shots/$1.png"; }
 
 shoot_all() {
   local m=$1
