@@ -70,8 +70,9 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             }
         },
     ) { pad ->
+        val apple = LocalSkin.current == Skin.APPLE
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = pad.calculateBottomPadding() + 24.dp)) {
-            if (LocalSkin.current == Skin.APPLE) item {
+            if (apple) item {
                 Text(r.name, Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             }
             item {
