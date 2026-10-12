@@ -46,42 +46,42 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
     val fav = r.name in data.favs
     val cs = MaterialTheme.colorScheme
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = {
-            LargeTopAppBar(
-                title = { Text(r.name, maxLines = 2) },
-                navigationIcon = { IconButton(onClick = nav.back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
-                actions = {
+    SkinScaffold(
+        title = r.name,
+        snackbar = snackbar,
+        onBack = nav.back,
+        actions = {
                     IconButton(onClick = { vm.toggleFav(r.name); toast.show(if (fav) "已取消收藏" else "已收藏") }) {
                         if (fav) Icon(Icons.Filled.Favorite, "取消收藏", tint = cs.tertiary) else Icon(Icons.Outlined.FavoriteBorder, "收藏")
                     }
                     IconButton(onClick = { nav.open(Route.Edit(r.id)) }) { Icon(Icons.Outlined.Edit, "编辑") }
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "更多") }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
-                            DropdownMenuItem(text = { Text("删除这道菜") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = { menu = false; confirmDel = true })
-                        }
-                    }
-                },
-                scrollBehavior = scroll,
-            )
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "更多") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
+                    DropdownMenuItem(text = { Text("删除这道菜") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = { menu = false; confirmDel = true })
+                }
+            }
         },
-        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            Surface(color = cs.surfaceContainer) {
-                Row(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Button(onClick = { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth().height(56.dp)) {
-                        Text("做了这道", style = MaterialTheme.typography.titleMedium)
-                    }
+            SkinBottomPanel {
+                Button(onClick = { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth().height(56.dp)) {
+                    Text("做了这道", style = MaterialTheme.typography.titleMedium)
                 }
             }
         },
     ) { pad ->
-        LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = pad.calculateBottomPadding() + 24.dp)) {
+            if (LocalSkin.current == Skin.APPLE) item {
+                Text(r.name, Modifier.padding(horizontal = 20.dp, vertical = 4.dp), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            }
             item {
                 FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Tag(r.cat)
+                    r.protein?.let {
+                        if (it >= K.HIGH_PROTEIN) Tag("高蛋白 ${it}g", cs.primaryContainer, cs.onPrimaryContainer)
+                        else Tag("蛋白 ${it}g", cs.surfaceContainerHighest, cs.onSurface)
+                    }
+                    r.kcal?.let { Tag("约 $it 千卡", cs.surfaceContainerHighest, cs.onSurface) }
                     r.diff?.let { Tag("难度 " + "★".repeat(it), cs.tertiaryContainer, cs.onTertiaryContainer) }
                     r.minutes?.let { Tag("约 $it 分钟", cs.surfaceContainerHighest, cs.onSurface) }
                     if (r.spicy) Tag("辣", cs.errorContainer, cs.onErrorContainer)
@@ -143,6 +143,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
                 Text(
                     listOfNotNull(
                         le?.let { "上次吃：" + agoText(it) },
+                        if (r.protein != null) "蛋白质和热量是每人份估算值（一盘菜按两人分，不含米饭），仅供参考" else null,
                         when (r.src) { "h" -> "菜谱来自开源项目 HowToCook"; "u" -> "自己添加的菜"; else -> "家常做法整理" },
                     ).joinToString("\n"),
                     Modifier.padding(horizontal = 20.dp, vertical = 24.dp), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
@@ -188,6 +189,8 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
     var spicy by remember { mutableStateOf(r?.spicy ?: false) }
     var meat by remember { mutableStateOf(r?.meat ?: false) }
     var desc by remember { mutableStateOf(r?.desc ?: "") }
+    var protein by remember { mutableStateOf(r?.protein?.toString() ?: "") }
+    var kcal by remember { mutableStateOf(r?.kcal?.toString() ?: "") }
     val ings = remember { (r?.ingredients ?: listOf("")).toMutableStateList() }
     val amts = remember { (r?.amounts ?: emptyList()).toMutableStateList() }
     val steps = remember { (r?.steps ?: listOf("")).toMutableStateList() }
@@ -199,6 +202,7 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
         id = r?.id ?: "", name = name, cat = cat, diff = diff, minutes = minutes.trim().toIntOrNull(),
         spicy = spicy, meat = meat, desc = desc, ingredients = ings.toList(), amounts = amts.toList(),
         steps = steps.toList(), tips = tips.toList(), src = r?.src ?: "u",
+        protein = protein.trim().toIntOrNull(), kcal = kcal.trim().toIntOrNull(),
     )
     val original = remember { build() }
     val dirty = build() != original
@@ -214,15 +218,12 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
         toast.show(if (r == null) "已添加 ${rec.name.trim()}" else "已保存")
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (r == null) "新菜" else "编辑菜谱") },
-                navigationIcon = { IconButton(onClick = { if (dirty) askLeave = true else nav.back() }) { Icon(Icons.Outlined.Close, "关闭") } },
-                actions = { Button(onClick = ::save, modifier = Modifier.padding(end = 8.dp)) { Text("保存") } },
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
+    SkinScaffold(
+        title = if (r == null) "新菜" else "编辑菜谱",
+        snackbar = snackbar,
+        onBack = { if (dirty) askLeave = true else nav.back() },
+        largeTitle = false,
+        actions = { Button(onClick = ::save, modifier = Modifier.padding(end = 8.dp)) { Text("保存") } },
     ) { pad ->
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 16.dp),
@@ -249,6 +250,16 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("含肉（“只要素的”会排除）", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); Switch(meat, { meat = it })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    protein, { protein = it.filter { c -> c.isDigit() } }, label = { Text("蛋白质 克/人份") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    kcal, { kcal = it.filter { c -> c.isDigit() } }, label = { Text("热量 千卡/人份") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f),
+                )
             }
             OutlinedTextField(desc, { desc = it }, label = { Text("简介（可不填）") }, minLines = 2, modifier = Modifier.fillMaxWidth())
             ListEditor("原料", "一行一样，如：五花肉", ings, numbered = false)

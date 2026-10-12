@@ -22,6 +22,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import app.chisha.AppData
 import app.chisha.AppViewModel
+import app.chisha.K
 
 @Composable
 fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState) {
@@ -48,25 +49,24 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
         )
     }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = {
-            LargeTopAppBar(
-                title = { Text("设置") },
-                navigationIcon = { IconButton(onClick = nav.back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
-                scrollBehavior = scroll,
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { pad ->
+    SkinScaffold(title = "设置", snackbar = snackbar, onBack = nav.back) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
-            SectionTitle("数量怎么记")
+            SectionTitle("外观")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                listOf("rough" to "按个 / 份", "exact" to "按克 / 毫升").forEachIndexed { i, (k, l) ->
-                    SegmentedButton(selected = data.settings.mode == k, onClick = { vm.setMode(k) }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
+                listOf("android" to "安卓 17", "apple" to "苹果 Liquid Glass").forEachIndexed { i, (k, l) ->
+                    SegmentedButton(selected = data.settings.skin == k, onClick = { vm.setSkin(k) }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
                 }
             }
-            Hint("决定新添加食材的默认单位和加减步长。已有食材保留自己的单位，编辑时也能单独改。")
+            Hint("安卓 17：配色跟随壁纸，Material 3 Expressive。苹果：iOS 系统色，导航栏和底栏是磨砂玻璃（安卓 12 及以上才有模糊效果）。")
+
+            SectionTitle("健身")
+            GroupItem(0, 1, onClick = { vm.setMuscle(!data.settings.muscle) }) {
+                Column(Modifier.weight(1f)) {
+                    Text("增肌：优先推荐高蛋白", style = MaterialTheme.typography.bodyLarge)
+                    Text("“做什么”和抽签会把蛋白质多的菜排前面。每人份 ${K.HIGH_PROTEIN} 克以上算高蛋白（估算值）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(data.settings.muscle, { vm.setMuscle(it) })
+            }
 
             SectionTitle("调料")
             GroupItem(0, 1, onClick = { vm.setSeasonHave(!data.settings.seasonHave) }) {
@@ -85,7 +85,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
                 importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
             }
             Row3(Icons.Outlined.RestartAlt, "恢复默认菜谱", "丢掉所有改动，回到自带的 198 道菜", 2, 3) { confirmReset = true }
-            Hint("文件里只能改每道菜的内容：菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士，也可以增删菜。字段名和结构不能改。分类只能是荤菜、素菜、水产、汤羹、主食、早餐。")
+            Hint("文件里只能改每道菜的内容：菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡，也可以增删菜。字段名和结构不能改。分类只能是荤菜、素菜、水产、汤羹、主食、早餐。")
 
             SectionTitle("从网页版搬过来")
             Hint("在网页版的“设置与备份”里点“生成备份文本”并复制，粘贴到下面。会替换这里冰箱和清单的内容。")

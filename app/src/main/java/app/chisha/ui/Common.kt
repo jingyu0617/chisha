@@ -70,6 +70,17 @@ fun groupShape(index: Int, size: Int): RoundedCornerShape {
     }
 }
 
+/** iOS 的“内嵌分组”列表：首尾圆角、中间直角、细分隔线 */
+fun iosGroupShape(index: Int, size: Int): RoundedCornerShape {
+    val r = 22.dp
+    return when {
+        size == 1 -> RoundedCornerShape(r)
+        index == 0 -> RoundedCornerShape(topStart = r, topEnd = r)
+        index == size - 1 -> RoundedCornerShape(bottomStart = r, bottomEnd = r)
+        else -> RoundedCornerShape(0.dp)
+    }
+}
+
 @Composable
 fun GroupItem(
     index: Int,
@@ -77,14 +88,16 @@ fun GroupItem(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val apple = LocalSkin.current == Skin.APPLE
     Surface(
-        shape = groupShape(index, size),
+        shape = if (apple) iosGroupShape(index, size) else groupShape(index, size),
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .padding(bottom = 2.dp),
+            .padding(bottom = if (apple) 0.dp else 2.dp),
     ) {
+        if (apple && index > 0) HorizontalDivider(Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
         Row(
             Modifier
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -170,6 +183,7 @@ fun Tag(text: String, container: Color = MaterialTheme.colorScheme.secondaryCont
 }
 
 fun recipeMeta(r: Recipe): String = listOfNotNull(
+    r.protein?.let { "蛋白${it}g" },
     r.diff?.let { "★".repeat(it) },
     r.minutes?.let { "约${it}分钟" },
     if (r.spicy) "辣" else null,

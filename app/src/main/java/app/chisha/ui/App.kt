@@ -1,5 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
+
 package app.chisha.ui
 
 import androidx.activity.compose.BackHandler
@@ -25,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -68,7 +68,7 @@ class Nav(
 val LocalNav = staticCompositionLocalOf<Nav> { error("no nav") }
 
 @Composable
-fun ChishaApp(vm: AppViewModel = viewModel()) {
+fun ChishaApp(vm: AppViewModel) {
     val loaded by vm.loaded.collectAsStateWithLifecycle()
     val data by vm.data.collectAsStateWithLifecycle()
     val recipes by vm.recipes.collectAsStateWithLifecycle()
@@ -128,6 +128,9 @@ fun ChishaApp(vm: AppViewModel = viewModel()) {
     }
 }
 
+/** 列表要留出的上下空白（顶栏、底栏、悬浮按钮） */
+val LocalListPad = compositionLocalOf { PaddingValues(bottom = 96.dp) }
+
 @Composable
 private fun Home(
     vm: AppViewModel,
@@ -138,32 +141,21 @@ private fun Home(
 ) {
     val data by vm.data.collectAsStateWithLifecycle()
     val nav = LocalNav.current
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val urgentCount = data.inv.count { (K.daysLeft(it.exp) ?: 99) <= 3 }
+    val skin = LocalSkin.current
+    val urgentCount = data.inv.count { (K.daysLeft(it.exp) ?: 99) <= 3 || (K.supplyDays(it) ?: 99) <= 5 }
     val shopCount = data.shop.count { !it.done }
     val today = remember {
         val d = java.time.LocalDate.now()
         "${d.monthValue}月${d.dayOfMonth}日 周" + "一二三四五六日"[d.dayOfWeek.value - 1]
     }
+    val select: (Int) -> Unit = { i -> nav.tab(i); if (i != 1) onCookUrgent(false) }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        topBar = {
-            LargeTopAppBar(
-                title = { Text(if (tab == 0) "今天吃啥" else TABS[tab].title) },
-                actions = {
-                    if (tab == 0) Text(today, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = { nav.open(Route.Settings) }) { Icon(Icons.Outlined.Settings, "设置") }
-                },
-                scrollBehavior = scroll,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
+    SkinScaffold(
+        title = if (tab == 0) "今天吃啥" else TABS[tab].title,
+        snackbar = snackbar,
+        titleExtra = if (tab == 0) ({ Text(today, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }) else null,
+        actions = { IconButton(onClick = { nav.open(Route.Settings) }) { Icon(Icons.Outlined.Settings, "设置") } },
+        fab = {
             when (tab) {
                 0 -> ExtendedFloatingActionButton(
                     onClick = { nav.sheet(Sheet.Item(null)) },
@@ -178,11 +170,19 @@ private fun Home(
             }
         },
         bottomBar = {
-            NavigationBar {
+            if (skin == Skin.APPLE) {
+                AppleTabBar(
+                    TABS.mapIndexed { i, t ->
+                        TabSpec(t.title, t.icon, when (i) { 0 -> urgentCount; 2 -> shopCount; else -> 0 },
+                            if (i == 2) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                    },
+                    tab, select,
+                )
+            } else NavigationBar {
                 TABS.forEachIndexed { i, t ->
                     NavigationBarItem(
                         selected = tab == i,
-                        onClick = { nav.tab(i); if (i != 1) onCookUrgent(false) },
+                        onClick = { select(i) },
                         icon = {
                             val badge = when (i) { 0 -> urgentCount; 2 -> shopCount; else -> 0 }
                             BadgedBox(badge = {
@@ -195,7 +195,8 @@ private fun Home(
             }
         },
     ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
+        val listPad = PaddingValues(top = pad.calculateTopPadding() + 4.dp, bottom = pad.calculateBottomPadding() + 88.dp)
+        CompositionLocalProvider(LocalListPad provides listPad) {
             when (tab) {
                 0 -> FridgeTab(vm, data, onGoCookUrgent = { onCookUrgent(true); nav.tab(1) })
                 1 -> CookTab(vm, data, cookUrgentOnly, onCookUrgent)

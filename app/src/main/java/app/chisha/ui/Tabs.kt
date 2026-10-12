@@ -50,7 +50,7 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
     val counts = inv.groupingBy { it.cat }.eachCount()
     val list = inv.filter { (cat.isEmpty() || it.cat == cat) && (q.isBlank() || it.name.contains(q.trim())) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = BOTTOM) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         if (urgent.isNotEmpty()) item {
             val soon = urgent.filter { (K.daysLeft(it.exp) ?: 0) >= 0 }
             val expired = urgent.filter { (K.daysLeft(it.exp) ?: 0) < 0 }
@@ -80,6 +80,21 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
                     if (soon.isNotEmpty()) FilledTonalButton(onClick = onGoCookUrgent, modifier = Modifier.padding(top = 12.dp)) {
                         Text("用快过期的做什么")
                     }
+                }
+            }
+        }
+        val low = inv.filter { (K.supplyDays(it) ?: 99) <= 5 }
+        if (low.isNotEmpty()) item {
+            Surface(
+                shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.tertiaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("快用完了", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Text(
+                        low.joinToString("、") { "${it.name}（还能用 ${K.supplyDays(it)} 天）" } + "。已自动加进购物清单。",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
                 }
             }
         }
@@ -124,12 +139,29 @@ private fun InvRow(vm: AppViewModel, it: InvItem, i: Int, n: Int) {
     GroupItem(i, n, onClick = { nav.sheet(Sheet.Item(it)) }) {
         Column(Modifier.weight(1f)) {
             Text(it.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val supply = K.supplyDays(it)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(it.loc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                ExpBadge(it.exp)
+                if (supply != null) {
+                    Text("每天${K.fmtQ(it.perDay ?: 1.0)}次 · 还能用${supply}天", style = MaterialTheme.typography.bodySmall,
+                        color = if (supply <= 5) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(it.loc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ExpBadge(it.exp)
+                }
+            }
+            K.coffeeFresh(it.roast)?.let { (t, lv) ->
+                val cs = MaterialTheme.colorScheme
+                Tag(t, when (lv) { K.Level.BAD -> cs.errorContainer; K.Level.WARN -> cs.tertiaryContainer; else -> cs.primaryContainer },
+                    when (lv) { K.Level.BAD -> cs.onErrorContainer; K.Level.WARN -> cs.onTertiaryContainer; else -> cs.onPrimaryContainer })
             }
         }
-        QtyStepper(
+        if (it.dose != null) {
+            QtyStepper(
+                "${K.fmtQ(it.qty)} ${it.unit}",
+                onMinus = { vm.useOnce(it.id); toast.show("${it.name} 用了一次（${K.fmtQ(it.dose)}${it.unit}）") },
+                onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
+            )
+        } else QtyStepper(
             "${K.fmtQ(it.qty)} ${it.unit}",
             onMinus = { if (vm.changeQty(it.id, -K.stepOf(it.unit))) toast.show("${it.name} 用完了，已移出冰箱") { vm.undo() } },
             onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
@@ -145,18 +177,20 @@ fun CookTab(vm: AppViewModel, data: AppData, urgentOnly: Boolean, setUrgentOnly:
     val nav = LocalNav.current
     var onlyFull by remember { mutableStateOf(false) }
     var noSpicy by remember { mutableStateOf(false) }
+    var highP by remember { mutableStateOf(false) }
     val live = remember(data.inv) { liveInv(data.inv) }
-    val urgent = data.inv.filter { val d = K.daysLeft(it.exp); d != null && d in 0..3 }
-    val res = remember(recipes, live, onlyFull, noSpicy, urgentOnly, data.settings.seasonHave) {
+    val urgent = live.filter { val d = K.daysLeft(it.exp); d != null && d in 0..3 }
+    val muscle = data.settings.muscle
+    val res = remember(recipes, live, onlyFull, noSpicy, highP, urgentOnly, data.settings.seasonHave, muscle) {
         recipes.asSequence()
-            .filter { !(noSpicy && it.spicy) }
-            .mapNotNull { r -> analyze(r, live, data.settings.seasonHave)?.let { r to it } }
+            .filter { !(noSpicy && it.spicy) && !(highP && (it.protein ?: 0) < K.HIGH_PROTEIN) }
+            .mapNotNull { r -> analyze(r, live, data.settings.seasonHave, muscle)?.let { r to it } }
             .filter { !(onlyFull && it.second.missing.isNotEmpty()) }
             .filter { !(urgentOnly && urgent.isNotEmpty() && it.second.urgent.isEmpty()) }
             .sortedWith(compareByDescending<Pair<Recipe, Analysis>> { it.second.score }.thenBy { it.first.diff ?: 3 })
             .toList()
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = BOTTOM) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
             Text("按冰箱里现有的食材排序，快过期的优先用掉。", Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -172,11 +206,11 @@ fun CookTab(vm: AppViewModel, data: AppData, urgentOnly: Boolean, setUrgentOnly:
             }
         }
         item {
-            val opts = buildList { if (urgent.isNotEmpty()) add("只看用快过期的"); add("只看不缺主料的"); add("不吃辣") }
+            val opts = buildList { if (urgent.isNotEmpty()) add("只看用快过期的"); add("高蛋白"); add("只看不缺主料的"); add("不吃辣") }
             ChipRow(opts, {
-                when (it) { "只看用快过期的" -> urgentOnly; "只看不缺主料的" -> onlyFull; else -> noSpicy }
+                when (it) { "只看用快过期的" -> urgentOnly; "高蛋白" -> highP; "只看不缺主料的" -> onlyFull; else -> noSpicy }
             }, {
-                when (it) { "只看用快过期的" -> setUrgentOnly(!urgentOnly); "只看不缺主料的" -> onlyFull = !onlyFull; else -> noSpicy = !noSpicy }
+                when (it) { "只看用快过期的" -> setUrgentOnly(!urgentOnly); "高蛋白" -> highP = !highP; "只看不缺主料的" -> onlyFull = !onlyFull; else -> noSpicy = !noSpicy }
             }, modifier = Modifier.padding(vertical = 4.dp))
         }
         if (live.isEmpty()) { item { EmptyCard("冰箱里还没有能用的食材。先去“冰箱”录几样。") }; return@LazyColumn }
@@ -222,7 +256,7 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
         input = ""
         if (n == 0) toast.show("已经在清单里了")
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = BOTTOM) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -303,12 +337,16 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
             it.cat in cats && it.name !in recent &&
                 !(f.maxDiff < 5 && (it.diff ?: 3) > f.maxDiff) &&
                 !(f.maxTime > 0 && (it.minutes == null || it.minutes > f.maxTime)) &&
-                !(f.noSpicy && it.spicy) && !(f.vegOnly && it.meat)
+                !(f.noSpicy && it.spicy) && !(f.vegOnly && it.meat) &&
+                !(f.highProtein && (it.protein ?: 0) < K.HIGH_PROTEIN)
         }
     }
     fun weighted(p: List<Recipe>): Recipe? {
         if (p.isEmpty()) return null
-        val w = p.map { r -> 1.0 + (analyze(r, live, data.settings.seasonHave)?.used?.size ?: 0) * 2.0 }
+        val w = p.map { r ->
+            1.0 + (analyze(r, live, data.settings.seasonHave)?.used?.size ?: 0) * 2.0 +
+                if (data.settings.muscle) (r.protein ?: 0) / 15.0 else 0.0
+        }
         var x = Math.random() * w.sum()
         for (i in p.indices) { x -= w[i]; if (x <= 0) return p[i] }
         return p.last()
@@ -318,7 +356,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
     val drawPool = pool(f.cats)
     LaunchedEffect(Unit) { if (current == null) current = drawPool.randomOrNull() }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = BOTTOM) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 listOf("抽一道", "配一桌").forEachIndexed { i, s ->
@@ -337,7 +375,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                                 if (f.cats.size == K.RCATS.size) "全部类别" else f.cats.joinToString("·"),
                                 if (f.maxDiff < 5) "难度≤${f.maxDiff}" else null,
                                 if (f.maxTime > 0) "${f.maxTime}分钟内" else null,
-                                if (f.noSpicy) "不辣" else null, if (f.vegOnly) "素" else null,
+                                if (f.noSpicy) "不辣" else null, if (f.vegOnly) "素" else null, if (f.highProtein) "高蛋白" else null,
                             ).joinToString(" / "), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         },
                         trailingContent = { Icon(if (showFilters) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null) },
@@ -360,10 +398,11 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                             vm.setFilters(f.copy(maxTime = times.first { it.second == l }.first))
                         })
                         Text("口味", style = MaterialTheme.typography.labelLarge)
-                        ChipFlow(listOf("不吃辣", "只要素的", "避开7天内吃过的"), {
-                            when (it) { "不吃辣" -> f.noSpicy; "只要素的" -> f.vegOnly; else -> f.avoidRecent }
+                        ChipFlow(listOf("高蛋白", "不吃辣", "只要素的", "避开7天内吃过的"), {
+                            when (it) { "高蛋白" -> f.highProtein; "不吃辣" -> f.noSpicy; "只要素的" -> f.vegOnly; else -> f.avoidRecent }
                         }, {
                             vm.setFilters(when (it) {
+                                "高蛋白" -> f.copy(highProtein = !f.highProtein)
                                 "不吃辣" -> f.copy(noSpicy = !f.noSpicy)
                                 "只要素的" -> f.copy(vegOnly = !f.vegOnly)
                                 else -> f.copy(avoidRecent = !f.avoidRecent)
@@ -452,7 +491,8 @@ private fun MealPlan(
     var meal by remember(kinds.joinToString(), f) { mutableStateOf(build()) }
 
     Column {
-        Text("${if (f.vegOnly) "全素" else "$meat 荤 $veg 素"}${if (soup > 0) " 1 汤" else ""}，冰箱里有料的菜更容易被抽到",
+        val perPerson = meal.filterNotNull().sumOf { (it.protein ?: 0) * 2 } / ppl.coerceAtLeast(1)
+        Text("${if (f.vegOnly) "全素" else "$meat 荤 $veg 素"}${if (soup > 0) " 1 汤" else ""}，这桌每人约 $perPerson 克蛋白质（估算，不含米饭）",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         meal.forEachIndexed { i, r ->
             GroupItem(i, meal.size, onClick = { r?.let { nav.open(Route.Detail(it.id)) } }) {
@@ -499,7 +539,7 @@ fun BookTab(vm: AppViewModel, data: AppData) {
     if (cat.isNotEmpty()) list = list.filter { it.cat == cat }
     if (q.isNotBlank()) list = list.filter { r -> r.name.contains(q.trim()) || r.ingredients.any { it.contains(q.trim()) } }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = BOTTOM) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
             OutlinedTextField(
                 value = q, onValueChange = { q = it }, singleLine = true,

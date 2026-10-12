@@ -6,11 +6,15 @@ import kotlin.math.roundToInt
 
 /** 食材常识：分类、存放、保质期、单位、和菜谱用料的匹配。 */
 object K {
-    val ICATS = listOf("蔬菜", "水果", "肉禽", "水产", "蛋奶豆", "主食干货", "调料", "其他")
+    val ICATS = listOf("蔬菜", "水果", "肉禽", "水产", "蛋奶豆", "主食干货", "补剂冲饮", "调料", "其他")
     val LOCS = listOf("冷藏", "冷冻", "常温")
     val RCATS = listOf("荤菜", "素菜", "水产", "汤羹", "主食", "早餐")
 
+    private val SUPP = Regex("蛋白粉|乳清|增肌粉|肌酸|咖啡豆|咖啡粉|挂耳|冻干咖啡|速溶咖啡|茶叶|代餐|BCAA|电解质", RegexOption.IGNORE_CASE)
+    private val COFFEE = Regex("咖啡豆|咖啡粉|挂耳")
+
     private val CAT_RULES: List<Pair<String, Regex>> = listOf(
+        "补剂冲饮" to SUPP,
         "蛋奶豆" to Regex("鸡蛋|鸭蛋|鹌鹑蛋|皮蛋|咸蛋|蛋|奶|豆腐|豆浆|腐竹|豆干|芝士|奶酪|黄油"),
         "水产" to Regex("鱼|虾|蟹|贝|鱿|蛤|蚝|海带|紫菜|海参|蛏|墨鱼|章鱼"),
         "水果" to Regex("苹果|香蕉|橙|橘|梨|葡萄|西瓜|草莓|桃|芒果|柠檬|猕猴桃|柚|蓝莓|樱桃|菠萝|榴莲|火龙果|哈密瓜"),
@@ -30,12 +34,13 @@ object K {
     private val KEEPS = Regex("土豆|马铃薯|洋葱|南瓜|红薯|芋|姜|蒜|冬瓜")
 
     fun guessLoc(n: String, c: String): String = when {
-        c == "主食干货" || c == "调料" -> "常温"
+        c == "主食干货" || c == "调料" || c == "补剂冲饮" -> "常温"
         KEEPS.containsMatchIn(n) -> "常温"
         else -> "冷藏"
     }
 
     fun guessDays(n: String, c: String, loc: String): Int {
+        if (c == "补剂冲饮") return if (COFFEE.containsMatchIn(n)) 90 else 365
         if (loc == "冷冻") return if (c == "肉禽" || c == "水产") 90 else 60
         if (n.contains("鸡蛋")) return 30
         if (Regex("豆腐|豆浆").containsMatchIn(n)) return 3
@@ -68,7 +73,7 @@ object K {
     fun stepOf(u: String): Double = mapOf("g" to 50.0, "kg" to 0.5, "ml" to 100.0, "L" to 0.5, "斤" to 0.5)[u] ?: 1.0
 
     fun defUnit(n: String, c: String, mode: String): String {
-        if (mode == "exact") {
+        if (mode == "exact" || c == "补剂冲饮") {
             return if (Regex("奶|油|酱油|醋|酒|汁|水").containsMatchIn(n) && c != "蔬菜") "ml" else "g"
         }
         return when {
@@ -82,6 +87,15 @@ object K {
         }
     }
 
+    fun unitMode(u: String) = if (unitKind(u) == "count") "rough" else "exact"
+
+    /** 新录入时的默认数量 */
+    fun defQty(unit: String, name: String = ""): Double = when {
+        unit == "g" && Regex("蛋白粉|乳清|增肌粉").containsMatchIn(name) -> 900.0
+        unit == "g" && COFFEE.containsMatchIn(name) -> 250.0
+        else -> defQty(unit)
+    }
+
     fun defQty(unit: String): Double = when (unit) {
         "g" -> 500.0
         "ml" -> 1000.0
@@ -92,6 +106,40 @@ object K {
         val r = (q * 100).roundToInt() / 100.0
         return if (r == r.toLong().toDouble()) r.toLong().toString() else r.toString()
     }
+
+    /* ---------- 消耗品 ---------- */
+    fun isCoffee(n: String) = COFFEE.containsMatchIn(n)
+
+    /** 常见消耗品的默认用法：每次用量（克）、每天几次 */
+    fun consumableDefaults(n: String): Pair<Double, Double>? = when {
+        Regex("蛋白粉|乳清|增肌粉").containsMatchIn(n) -> 30.0 to 1.0
+        n.contains("肌酸") -> 5.0 to 1.0
+        COFFEE.containsMatchIn(n) -> 15.0 to 2.0
+        else -> null
+    }
+
+    /** 按每天用量算，还能用几天；不是消耗品返回 null */
+    fun supplyDays(it: InvItem): Int? {
+        val d = it.dose ?: return null
+        val p = it.perDay ?: return null
+        if (d <= 0 || p <= 0) return null
+        return (it.qty / (d * p)).toInt()
+    }
+
+    /** 咖啡豆新鲜度：烘焙后第几天 */
+    fun coffeeFresh(roast: String?): Pair<String, Level>? {
+        if (roast.isNullOrBlank()) return null
+        val d = try { ChronoUnit.DAYS.between(LocalDate.parse(roast), LocalDate.now()).toInt() } catch (e: Exception) { return null }
+        return when {
+            d < 0 -> null
+            d < 4 -> "养豆中·第${d}天" to Level.WARN
+            d <= 30 -> "最佳赏味·第${d}天" to Level.OK
+            d <= 45 -> "尽快喝完·第${d}天" to Level.WARN
+            else -> "风味下降·已${d}天" to Level.BAD
+        }
+    }
+
+    const val HIGH_PROTEIN = 25
 
     /* ---------- 日期 ---------- */
     fun ymd(offset: Int): String = LocalDate.now().plusDays(offset.toLong()).toString()
@@ -239,7 +287,8 @@ data class Analysis(
     val score: Double,
 )
 
-fun liveInv(inv: List<InvItem>) = inv.filter { it.qty > 0 && (K.daysLeft(it.exp)?.let { d -> d >= 0 } ?: true) }
+/** 能拿来做菜的食材：有数量、没过期、不是补剂冲饮 */
+fun liveInv(inv: List<InvItem>) = inv.filter { it.qty > 0 && it.cat != "补剂冲饮" && (K.daysLeft(it.exp)?.let { d -> d >= 0 } ?: true) }
 
 fun missingFor(r: Recipe, live: List<InvItem>, seasonHave: Boolean): List<String> {
     val out = mutableListOf<String>()
@@ -251,7 +300,7 @@ fun missingFor(r: Recipe, live: List<InvItem>, seasonHave: Boolean): List<String
     return out
 }
 
-fun analyze(r: Recipe, live: List<InvItem>, seasonHave: Boolean): Analysis? {
+fun analyze(r: Recipe, live: List<InvItem>, seasonHave: Boolean, muscle: Boolean = false): Analysis? {
     val used = live.filter { it2 -> r.ingredients.any { line -> K.matchItem(it2.name, line) } }
     if (used.isEmpty()) return null
     val missing = missingFor(r, live, seasonHave)
@@ -271,5 +320,6 @@ fun analyze(r: Recipe, live: List<InvItem>, seasonHave: Boolean): Analysis? {
     score -= missing.size * 1.0
     if (K.isGeneric(r)) score *= 0.3
     if ((r.minutes ?: 0) > 90) score -= 1
+    if (muscle) score += (r.protein ?: 0) / 12.0
     return Analysis(used, missing, urgent, score)
 }

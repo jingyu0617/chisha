@@ -19,6 +19,8 @@ data class Recipe(
     val steps: List<String> = emptyList(),
     val tips: List<String> = emptyList(),
     val src: String = "m",
+    val protein: Int? = null,   // 每人份蛋白质（克，估算）
+    val kcal: Int? = null,      // 每人份热量（千卡，估算）
 )
 
 @Serializable
@@ -32,6 +34,12 @@ data class InvItem(
     val exp: String? = null,
     val t: Long = 0,
     val sample: Boolean = false,
+    // 消耗品：每次用量（和 unit 同单位）、每天几次；按天自动扣
+    val dose: Double? = null,
+    val perDay: Double? = null,
+    val autoAt: Long? = null,      // 上次自动扣到的时间
+    val reordered: Boolean = false, // 本轮快用完时已自动加进清单
+    val roast: String? = null,     // 咖啡豆烘焙日期
 )
 
 @Serializable
@@ -49,8 +57,10 @@ data class Eaten(val n: String, val t: Long)
 
 @Serializable
 data class Settings(
-    val mode: String = "rough",       // rough = 按个/份, exact = 按克/毫升
+    val mode: String = "rough",       // 旧版全局单位设置，已改为录入时逐项选择
     val seasonHave: Boolean = true,   // 调料默认家里有
+    val skin: String = "android",     // android = 安卓 17 风格, apple = 苹果 Liquid Glass 风格
+    val muscle: Boolean = true,       // 增肌：优先推荐高蛋白
 )
 
 @Serializable
@@ -61,6 +71,7 @@ data class DrawFilters(
     val noSpicy: Boolean = false,
     val vegOnly: Boolean = false,
     val avoidRecent: Boolean = true,
+    val highProtein: Boolean = false,
 )
 
 @Serializable
@@ -78,7 +89,7 @@ data class AppData(
 /* ---------- 菜谱文件（导入/导出用，字段名固定为中文） ---------- */
 
 const val RECIPE_FILE_FORMAT = "今天吃啥菜谱"
-const val RECIPE_FILE_VERSION = 1
+const val RECIPE_FILE_VERSION = 2
 
 @Serializable
 data class RecipeFile(
@@ -101,6 +112,8 @@ data class RecipeEntry(
     @SerialName("用量") val amounts: List<String> = emptyList(),
     @SerialName("做法") val steps: List<String>,
     @SerialName("小贴士") val tips: List<String> = emptyList(),
+    @SerialName("蛋白质克") val protein: Int? = null,
+    @SerialName("热量千卡") val kcal: Int? = null,
 )
 
 /* ---------- 网页版备份（迁移用） ---------- */

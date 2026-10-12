@@ -42,6 +42,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _data.value = d
             _recipes.value = r
             _loaded.value = true
+            tick()
         }
     }
 
@@ -64,7 +65,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!d.seeded) {
             d = d.copy(inv = sampleInv(), seeded = true)
         }
-        return d to r
+        // 旧版保存的菜谱没有蛋白质数据，从自带菜谱补上
+        val defs = runCatching { defaultRecipes().associateBy { it.name } }.getOrDefault(emptyMap())
+        val r2 = r.map { x -> if (x.protein == null && defs[x.name] != null) x.copy(protein = defs[x.name]!!.protein, kcal = defs[x.name]!!.kcal) else x }
+        return d to r2
     }
 
     private fun sampleInv(): List<InvItem> {
@@ -100,6 +104,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun newId(prefix: String) = prefix + System.currentTimeMillis().toString(36) + (0..9999).random().toString(36)
 
+    /* ================= 消耗品：按天自动扣、快用完自动进清单 ================= */
+
+    fun tick() {
+        if (!_loaded.value) return
+        val now = System.currentTimeMillis()
+        val day = 86_400_000L
+        var changed = false
+        val toShop = mutableListOf<String>()
+        val inv = _data.value.inv.map { it0 ->
+            var it = it0
+            val dose = it.dose; val per = it.perDay
+            if (dose != null && per != null && dose > 0 && per > 0) {
+                val since = it.autoAt
+                if (since == null) { it = it.copy(autoAt = now); changed = true }
+                else {
+                    val days = ((now - since) / day).toInt()
+                    if (days >= 1) {
+                        it = it.copy(qty = round2((it.qty - days * dose * per).coerceAtLeast(0.0)), autoAt = since + days * day)
+                        changed = true
+                    }
+                }
+                val left = K.supplyDays(it) ?: 99
+                if (left <= 5 && !it.reordered) {
+                    toShop += it.name
+                    it = it.copy(reordered = true); changed = true
+                }
+            }
+            it
+        }
+        if (changed) edit { it.copy(inv = inv) }
+        if (toShop.isNotEmpty()) addToShop(toShop, "快用完了")
+    }
+
+    /** 消耗品“用了一次” */
+    fun useOnce(id: String): Boolean {
+        val it0 = _data.value.inv.firstOrNull { it.id == id } ?: return false
+        val d = it0.dose ?: return false
+        edit { dd -> dd.copy(inv = dd.inv.map { if (it.id == id) it.copy(qty = round2((it.qty - d).coerceAtLeast(0.0))) else it }) }
+        tick()
+        return true
+    }
+
     /* ================= 库存 ================= */
 
     val hasSample: Boolean get() = _data.value.inv.any { it.sample }
@@ -110,7 +156,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 新增或合并；返回合并到的那一项（新增时为 null） */
-    fun addInv(name: String, cat: String, qty: Double, unit: String, loc: String, exp: String?): InvItem? {
+    fun addInv(
+        name: String, cat: String, qty: Double, unit: String, loc: String, exp: String?,
+        dose: Double? = null, perDay: Double? = null, roast: String? = null,
+    ): InvItem? {
         var merged: InvItem? = null
         edit { d ->
             val base = d.inv.filterNot { it.sample }
@@ -118,17 +167,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val list = if (same != null) {
                 val nq = ((same.qty + qty) * 100).roundToInt() / 100.0
                 val ne = if (exp != null && (same.exp == null || exp < same.exp)) exp else same.exp
-                merged = same.copy(qty = nq, exp = ne)
+                merged = same.copy(
+                    qty = nq, exp = ne, reordered = false,
+                    dose = dose ?: same.dose, perDay = perDay ?: same.perDay, roast = roast ?: same.roast,
+                    autoAt = if ((dose ?: same.dose) != null) (same.autoAt ?: System.currentTimeMillis()) else null,
+                )
                 base.map { if (it.id == same.id) merged!! else it }
             } else {
-                base + InvItem(newId("i"), name, cat, round2(qty), unit, loc, exp, System.currentTimeMillis())
+                base + InvItem(
+                    newId("i"), name, cat, round2(qty), unit, loc, exp, System.currentTimeMillis(),
+                    dose = dose, perDay = perDay, roast = roast, autoAt = if (dose != null && perDay != null) System.currentTimeMillis() else null,
+                )
             }
             d.copy(inv = list)
         }
         return merged
     }
 
-    fun updateInv(item: InvItem) = edit { d -> d.copy(inv = d.inv.map { if (it.id == item.id) item.copy(sample = false) else it }) }
+    fun updateInv(item: InvItem) {
+        edit { d ->
+            d.copy(inv = d.inv.map { old ->
+                if (old.id != item.id) old else {
+                    val consumable = item.dose != null && item.perDay != null
+                    item.copy(
+                        sample = false,
+                        reordered = if (item.qty > old.qty) false else old.reordered,
+                        autoAt = if (consumable) (old.autoAt ?: System.currentTimeMillis()) else null,
+                    )
+                }
+            })
+        }
+        tick()
+    }
 
     fun deleteInv(id: String) {
         undoInv = _data.value.inv
@@ -139,10 +209,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun changeQty(id: String, delta: Double): Boolean {
         val it0 = _data.value.inv.firstOrNull { it.id == id } ?: return false
         val nq = round2((it0.qty + delta).coerceAtLeast(0.0))
-        return if (nq <= 0.0) {
+        return if (nq <= 0.0 && it0.dose == null) {
             deleteInv(id); true
         } else {
-            edit { d -> d.copy(inv = d.inv.map { if (it.id == id) it.copy(qty = nq) else it }) }
+            edit { d -> d.copy(inv = d.inv.map { if (it.id == id) it.copy(qty = nq, reordered = if (delta > 0) false else it.reordered) else it }) }
+            if (it0.dose != null) tick()
             false
         }
     }
@@ -233,7 +304,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         for (r in rows) {
             if (!r.on || r.qty <= 0) continue
             val loc = K.guessLoc(r.item.name, r.item.cat)
-            addInv(r.item.name, r.item.cat, r.qty, r.unit, loc, K.ymd(K.guessDays(r.item.name, r.item.cat, loc)))
+            val cd = if (K.unitKind(r.unit) != "count") K.consumableDefaults(r.item.name) else null
+            addInv(r.item.name, r.item.cat, r.qty, r.unit, loc, K.ymd(K.guessDays(r.item.name, r.item.cat, loc)),
+                dose = cd?.first, perDay = cd?.second, roast = if (K.isCoffee(r.item.name)) K.ymd(0) else null)
             n++
         }
         val ids = rows.map { it.item.id }.toSet()
@@ -258,6 +331,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMode(m: String) = edit { it.copy(settings = it.settings.copy(mode = m)) }
     fun setSeasonHave(v: Boolean) = edit { it.copy(settings = it.settings.copy(seasonHave = v)) }
+    fun setSkin(v: String) = edit { it.copy(settings = it.settings.copy(skin = v)) }
+    fun setMuscle(v: Boolean) = edit { it.copy(settings = it.settings.copy(muscle = v)) }
     fun setFilters(f: DrawFilters) = edit { it.copy(filters = f) }
     fun setPpl(n: Int) = edit { it.copy(ppl = n.coerceIn(1, 10)) }
 
@@ -273,6 +348,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (r.steps.none { it.isNotBlank() }) return "至少要有一步做法"
         if (r.diff != null && r.diff !in 1..5) return "难度只能是 1 到 5"
         if (r.minutes != null && r.minutes !in 1..1440) return "时间要在 1 到 1440 分钟之间"
+        if (r.protein != null && r.protein !in 0..300) return "蛋白质要在 0 到 300 克之间"
+        if (r.kcal != null && r.kcal !in 0..5000) return "热量要在 0 到 5000 千卡之间"
         val clash = _recipes.value.any { it.name == r.name.trim() && it.id != r.id }
         if (clash) return "已经有一道「${r.name.trim()}」了，换个名字"
         return null
@@ -328,9 +405,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun exportRecipes(uri: Uri): Result<Int> = runCatching {
         val file = RecipeFile(
             format = RECIPE_FILE_FORMAT, version = RECIPE_FILE_VERSION,
-            note = "可以修改菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士的内容，也可以增删菜。字段名和结构不要改，否则导入会被拒绝。分类只能是：荤菜、素菜、水产、汤羹、主食、早餐。",
+            note = "可以修改菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡的内容，也可以增删菜。字段名和结构不要改，否则导入会被拒绝。分类只能是：荤菜、素菜、水产、汤羹、主食、早餐。",
             recipes = _recipes.value.map {
-                RecipeEntry(it.name, it.cat, it.diff, it.minutes, it.spicy, it.meat, it.desc, it.ingredients, it.amounts, it.steps, it.tips)
+                RecipeEntry(it.name, it.cat, it.diff, it.minutes, it.spicy, it.meat, it.desc, it.ingredients, it.amounts, it.steps, it.tips, it.protein, it.kcal)
             },
         )
         val text = prettyJson.encodeToString(RecipeFile.serializer(), file)
@@ -358,7 +435,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ))
         }
         if (file.format != RECIPE_FILE_FORMAT) return Result.failure(IllegalArgumentException("这不是「今天吃啥」的菜谱文件"))
-        if (file.version != RECIPE_FILE_VERSION) return Result.failure(IllegalArgumentException("菜谱文件版本是 ${file.version}，这个 App 只认版本 $RECIPE_FILE_VERSION"))
+        if (file.version != 1 && file.version != RECIPE_FILE_VERSION) return Result.failure(IllegalArgumentException("菜谱文件版本是 ${file.version}，这个 App 只认版本 $RECIPE_FILE_VERSION"))
         if (file.recipes.isEmpty()) return Result.failure(IllegalArgumentException("文件里一道菜都没有"))
         val seen = HashSet<String>()
         file.recipes.forEachIndexed { i, e ->
@@ -370,6 +447,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (e.steps.none { it.isNotBlank() }) return Result.failure(IllegalArgumentException("$label：做法不能为空"))
             if (e.diff != null && e.diff !in 1..5) return Result.failure(IllegalArgumentException("$label：难度只能是 1 到 5"))
             if (e.minutes != null && e.minutes !in 1..1440) return Result.failure(IllegalArgumentException("$label：分钟要在 1 到 1440 之间"))
+            if (e.protein != null && e.protein !in 0..300) return Result.failure(IllegalArgumentException("$label：蛋白质克要在 0 到 300 之间"))
+            if (e.kcal != null && e.kcal !in 0..5000) return Result.failure(IllegalArgumentException("$label：热量千卡要在 0 到 5000 之间"))
         }
         val names = _recipes.value.map { it.name }.toSet()
         val upd = file.recipes.count { it.name.trim() in names }
@@ -390,6 +469,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 steps = e.steps.map { it.trim() }.filter { it.isNotEmpty() },
                 tips = e.tips.map { it.trim() }.filter { it.isNotEmpty() },
                 src = byName[n]?.src ?: "u",
+                protein = e.protein, kcal = e.kcal,
             )
         }
         _recipes.value = if (replaceAll) incoming else {
