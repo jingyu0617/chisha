@@ -29,6 +29,7 @@ class ReminderWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
     override suspend fun doWork(): Result {
         val d = applicationContext.appStore.data.first()
         if (!d.settings.notify) return Result.success()
+        ChishaWidget.refresh(applicationContext)
         val projected = Logic.applyConsumption(d).first   // 估算今天的剩余量
         val r = Logic.reminders(projected) ?: return Result.success()
         Reminders.show(applicationContext, r)

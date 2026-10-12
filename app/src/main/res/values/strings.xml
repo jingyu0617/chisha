@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">今天吃啥</string>
+    <string name="widget_desc">快到期的食材、快用完的蛋白粉咖啡豆、要买几样</string>
 </resources>

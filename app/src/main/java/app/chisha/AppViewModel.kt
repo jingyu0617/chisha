@@ -53,7 +53,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 rstore.updateData { RecipeBook(r, true) }
             }
             _loaded.value = true
-            launch(Dispatchers.IO) { _data.drop(1).conflate().collect { v -> store.updateData { v } } }
+            launch(Dispatchers.IO) {
+                _data.drop(1).conflate().collect { v ->
+                    store.updateData { v }
+                    ChishaWidget.refresh(getApplication())
+                }
+            }
             launch(Dispatchers.IO) { _recipes.drop(1).conflate().collect { v -> rstore.updateData { RecipeBook(v, true) } } }
             tick()
         }

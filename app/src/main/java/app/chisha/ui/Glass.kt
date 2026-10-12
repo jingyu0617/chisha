@@ -27,6 +27,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -250,13 +253,22 @@ private fun AppleTopBar(
 
 data class TabSpec(val title: String, val icon: ImageVector, val badge: Int = 0, val badgeColor: Color = Color.Unspecified)
 
-/** iOS 26 风格的悬浮液态玻璃标签栏：选中项是一颗会滑动的、带色散折射的玻璃珠 */
+/**
+ * iOS 26 风格的悬浮液态玻璃标签栏：选中项是一颗带色散折射的玻璃珠。
+ * 可以按住玻璃珠左右拖，经过每一项有轻微震动，松手停在最近的一项。
+ */
 @Composable
 fun AppleTabBar(tabs: List<TabSpec>, selected: Int, onSelect: (Int) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val density = LocalDensity.current
+    val hp = rememberHaptics()
     var barW by remember { mutableIntStateOf(0) }
-    val pos by animateFloatAsState(selected.toFloat(), spring(dampingRatio = 0.72f, stiffness = 380f), label = "tab")
+    var drag by remember { mutableStateOf<Float?>(null) }   // 拖动中的位置（以“第几项”为单位）
+    val settled by animateFloatAsState(selected.toFloat(), spring(dampingRatio = 0.72f, stiffness = 380f), label = "tab")
+    val pos = drag ?: settled
+    val pillScale by animateFloatAsState(if (drag != null) 1.12f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "pill")
+    val hover = pos.roundToInt().coerceIn(0, tabs.lastIndex)
+    LaunchedEffect(hover) { if (drag != null) hp.tick() }
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 6.dp, top = 4.dp)) {
         Box(
             Modifier
@@ -275,12 +287,30 @@ fun AppleTabBar(tabs: List<TabSpec>, selected: Int, onSelect: (Int) -> Unit) {
                         .offset(x = itemW * pos)
                         .width(itemW)
                         .fillMaxHeight()
+                        .graphicsLayer { scaleX = pillScale; scaleY = pillScale }
                         .liquidGlass(blurDp = 4f, refraction = 14f, surface = cs.onSurface.copy(alpha = 0.06f), chromatic = true),
                 )
             }
-            Row(Modifier.fillMaxSize()) {
+            val itemPx = ((barW - with(density) { 8.dp.toPx() }) / tabs.size).coerceAtLeast(1f)
+            Row(
+                Modifier.fillMaxSize().pointerInput(tabs.size, barW) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { o -> drag = (o.x / itemPx - 0.5f).coerceIn(0f, tabs.lastIndex.toFloat()) },
+                        onDragEnd = {
+                            val target = (drag ?: selected.toFloat()).roundToInt().coerceIn(0, tabs.lastIndex)
+                            drag = null
+                            onSelect(target)
+                        },
+                        onDragCancel = { drag = null },
+                        onHorizontalDrag = { change, dx ->
+                            change.consume()
+                            drag = ((drag ?: selected.toFloat()) + dx / itemPx).coerceIn(0f, tabs.lastIndex.toFloat())
+                        },
+                    )
+                },
+            ) {
                 tabs.forEachIndexed { i, t ->
-                    val sel = i == selected
+                    val sel = if (drag != null) i == hover else i == selected
                     val color by animateColorAsState(if (sel) cs.primary else cs.onSurface, label = "tabc")
                     Column(
                         Modifier
