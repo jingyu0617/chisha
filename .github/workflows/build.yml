@@ -29,6 +29,8 @@ jobs:
           set -o pipefail
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           gradle :app:assembleRelease --console=plain 2>&1 | tee build.log
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/app.apk
 
       - name: Report build errors
         if: failure()
@@ -37,20 +39,37 @@ jobs:
           msg=$(grep -E "^e: |error:|What went wrong|Could not|Dependency |compileSdk|Android Gradle plugin|requires|^ +[0-9]+\\. " build.log | grep -v "^> Task" | sort -u | head -40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::error title=build::${msg}"
 
-      - name: Rename APK
+      - name: Enable KVM
         run: |
-          mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk "out/今天吃啥-v1.0.${{ github.run_number }}.apk"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke test on emulator
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: 今天吃啥-apk
-          path: out/*.apk
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash .github/smoke.sh
+
+      - name: Report crash
+        if: failure()
+        shell: bash
+        run: |
+          [ -f crash.txt ] || exit 0
+          msg=$(cat crash.txt | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=crash::${msg}"
+
+      - name: Name APK
+        run: cp out/app.apk "out/chisha-v1.0.${{ github.run_number }}.apk"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: 今天吃啥 v1.0.${{ github.run_number }}
-          body: 下载下面的 .apk 文件，在安卓手机上打开安装。
-          files: out/*.apk
+          body: 下载下面的 chisha-v1.0.${{ github.run_number }}.apk，在安卓手机上打开安装。
+          files: out/chisha-v1.0.${{ github.run_number }}.apk
+
