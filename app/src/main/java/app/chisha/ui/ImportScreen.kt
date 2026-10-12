@@ -109,11 +109,8 @@ fun ImportScreen(vm: AppViewModel, snackbar: SnackbarHostState) {
                             d.warnings.forEach { Text("· $it", color = cs.tertiary, style = MaterialTheme.typography.bodySmall) }
                             if (exists) {
                                 Text("已经有一道「${r.name}」：", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
-                                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                                    AppViewModel.Conflict.entries.forEachIndexed { k, c ->
-                                        SegmentedButton(selected = d.conflict == c, onClick = { vm.setConflict(i, c) }, shape = SegmentedButtonDefaults.itemShape(k, 3)) { Text(c.label) }
-                                    }
-                                }
+                                val cs3 = AppViewModel.Conflict.entries
+                                SkinSegmented(cs3.map { it.label }, cs3.indexOf(d.conflict), { vm.setConflict(i, cs3[it]) }, Modifier.fillMaxWidth())
                             }
                             TextButton(onClick = { nav.open(EditKey("draft:$i")) }, contentPadding = PaddingValues(horizontal = 0.dp)) {
                                 Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))

@@ -137,11 +137,8 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("数量", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                SingleChoiceSegmentedButtonRow {
-                    listOf("rough" to "按个/份", "exact" to "按克/毫升").forEachIndexed { i, (k, l) ->
-                        SegmentedButton(selected = umode == k, onClick = { applyMode(k) }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
-                    }
-                }
+                val modes = listOf("rough", "exact")
+                SkinSegmented(listOf("按个/份", "按克/毫升"), modes.indexOf(umode).coerceAtLeast(0), { applyMode(modes[it]) }, Modifier.width(220.dp))
             }
             OutlinedTextField(
                 qty, { qty = it.filter { c -> c.isDigit() || c == '.' }; qtyTouched = true }, singleLine = true,
@@ -161,7 +158,7 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
                             Text("每天固定用", style = MaterialTheme.typography.bodyLarge)
                             Text("蛋白粉、咖啡豆这类：按天自动扣，快用完自动进清单", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Switch(consumable, {
+                        SkinSwitch(consumable, {
                             consumable = it
                             if (it) {
                                 val cd = K.consumableDefaults(name.trim())
@@ -198,11 +195,7 @@ fun ItemSheet(vm: AppViewModel, data: AppData, item: InvItem?, presetName: Strin
             }
 
             Text("放在哪", style = MaterialTheme.typography.labelLarge)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                K.LOCS.forEachIndexed { i, l ->
-                    SegmentedButton(selected = loc == l, onClick = { loc = l; locTouched = true; autofill(false) }, shape = SegmentedButtonDefaults.itemShape(i, K.LOCS.size)) { Text(l) }
-                }
-            }
+            SkinSegmented(K.LOCS, K.LOCS.indexOf(loc).coerceAtLeast(0), { loc = K.LOCS[it]; locTouched = true; autofill(false) }, Modifier.fillMaxWidth())
             Text("保质期到", style = MaterialTheme.typography.labelLarge)
             OutlinedButton(onClick = { dateTarget = "exp" }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.CalendarMonth, null); Spacer(Modifier.width(8.dp))

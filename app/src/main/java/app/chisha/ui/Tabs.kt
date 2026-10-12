@@ -3,6 +3,9 @@
 package app.chisha.ui
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.*
@@ -111,12 +114,7 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
             }
         }
         item {
-            OutlinedTextField(
-                value = q, onValueChange = { q = it },
-                placeholder = { Text("找食材") }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                singleLine = true, shape = RoundedCornerShape(28.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            SkinSearchField(q, { q = it }, "找食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         }
         if (inv.isNotEmpty()) item {
             val opts = listOf("") + K.ICATS.filter { (counts[it] ?: 0) > 0 }
@@ -128,9 +126,71 @@ fun FridgeTab(vm: AppViewModel, data: AppData, onGoCookUrgent: () -> Unit) {
             val g = list.filter { it.cat == c }.sortedWith(compareBy<InvItem> { K.daysLeft(it.exp) ?: 9999 }.thenBy { it.name })
             if (g.isEmpty()) return@forEach
             item(key = "h-$c") { SectionTitle(c, g.size) }
-            itemsIndexed(g, key = { _, it -> it.id }) { i, it -> InvRow(vm, it, i, g.size) }
+            itemsIndexed(g, key = { _, it -> it.id }) { i, it ->
+                SwipeRow(
+                    onEndToStart = { vm.deleteInv(it.id); toast.show("已删除 ${it.name}") { vm.undo() } },
+                    endLabel = "删除",
+                    modifier = Modifier.animateItem(),
+                ) { InvRow(vm, it, i, g.size) }
+            }
         }
     }
+}
+
+@Composable
+/**
+ * 可以左右滑的行（官方 SwipeToDismissBox）：
+ * 往左滑 = 删除，往右滑 = 另一个操作（比如“买到了”）；滑过一半有震动提示。
+ */
+@Composable
+private fun SwipeRow(
+    onEndToStart: () -> Unit,
+    endLabel: String,
+    modifier: Modifier = Modifier,
+    onStartToEnd: (() -> Unit)? = null,
+    startLabel: String = "",
+    content: @Composable () -> Unit,
+) {
+    val hp = rememberHaptics()
+    val scope = rememberCoroutineScope()
+    val state = rememberSwipeToDismissBoxState()
+    val cs = MaterialTheme.colorScheme
+    var armed by remember { mutableStateOf(false) }
+    LaunchedEffect(state.targetValue) {
+        val now = state.targetValue != SwipeToDismissBoxValue.Settled
+        if (now && !armed) hp.threshold()
+        armed = now
+    }
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        enableDismissFromStartToEnd = onStartToEnd != null,
+        backgroundContent = {
+            val dir = state.dismissDirection
+            val start = dir == SwipeToDismissBoxValue.StartToEnd
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(bottom = 2.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (start) cs.primaryContainer else cs.errorContainer)
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (start) Arrangement.Start else Arrangement.End,
+            ) {
+                if (dir != SwipeToDismissBoxValue.Settled) Text(
+                    if (start) startLabel else endLabel,
+                    color = if (start) cs.onPrimaryContainer else cs.onErrorContainer,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        },
+        onDismiss = { v ->
+            if (v == SwipeToDismissBoxValue.EndToStart) { hp.reject(); onEndToStart() }
+            else if (v == SwipeToDismissBoxValue.StartToEnd) {
+                hp.confirm(); onStartToEnd?.invoke()
+                scope.launch { state.reset() }
+            }
+        },
+    ) { content() }
 }
 
 @Composable
@@ -161,11 +221,13 @@ private fun InvRow(vm: AppViewModel, it: InvItem, i: Int, n: Int) {
                 "${K.fmtQ(it.qty)} ${it.unit}",
                 onMinus = { vm.useOnce(it.id); toast.show("${it.name} 用了一次（${K.fmtQ(it.dose)}${it.unit}）") },
                 onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
+                what = it.name,
             )
         } else QtyStepper(
             "${K.fmtQ(it.qty)} ${it.unit}",
             onMinus = { if (vm.changeQty(it.id, -K.stepOf(it.unit))) toast.show("${it.name} 用完了，已移出冰箱") { vm.undo() } },
             onPlus = { vm.changeQty(it.id, K.stepOf(it.unit)) },
+            what = it.name,
         )
     }
 }
@@ -286,11 +348,23 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
             val g = todo.filter { it.cat == c }
             if (g.isEmpty()) return@forEach
             item(key = "sh-$c") { SectionTitle(c, g.size) }
-            itemsIndexed(g, key = { _, it -> it.id }) { i, it -> ShopRow(vm, it, i, g.size) }
+            itemsIndexed(g, key = { _, it -> it.id }) { i, it ->
+                SwipeRow(
+                    onEndToStart = { vm.removeShop(it.id); toast.show("已删掉 ${it.name}") { vm.undo() } }, endLabel = "删掉",
+                    onStartToEnd = { vm.toggleShop(it.id) }, startLabel = "买到了",
+                    modifier = Modifier.animateItem(),
+                ) { ShopRow(vm, it, i, g.size) }
+            }
         }
         if (done.isNotEmpty()) {
             item(key = "done-h") { SectionTitle("已买", done.size) }
-            itemsIndexed(done, key = { _, it -> it.id }) { i, it -> ShopRow(vm, it, i, done.size) }
+            itemsIndexed(done, key = { _, it -> it.id }) { i, it ->
+                SwipeRow(
+                    onEndToStart = { vm.removeShop(it.id); toast.show("已删掉 ${it.name}") { vm.undo() } }, endLabel = "删掉",
+                    onStartToEnd = { vm.toggleShop(it.id) }, startLabel = "没买到",
+                    modifier = Modifier.animateItem(),
+                ) { ShopRow(vm, it, i, done.size) }
+            }
             item(key = "done-btn") {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = { vm.clearDoneShop(); toast.show("已清掉已买") { vm.undo() } }, Modifier.weight(1f)) { Text("清掉已买") }
@@ -359,11 +433,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                listOf("抽一道", "配一桌").forEachIndexed { i, s ->
-                    SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(s) }
-                }
-            }
+            SkinSegmented(listOf("抽一道", "配一桌"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
         }
         item {
             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -544,18 +614,10 @@ fun BookTab(vm: AppViewModel, data: AppData) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = LocalListPad.current) {
         item {
-            OutlinedTextField(
-                value = q, onValueChange = { q = it }, singleLine = true,
-                placeholder = { Text("搜菜名或食材") }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            SkinSearchField(q, { q = it }, "搜菜名或食材", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         }
         item {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                listOf("全部", "收藏", "吃过").forEachIndexed { i, s ->
-                    SegmentedButton(selected = mode == i, onClick = { mode = i }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(s) }
-                }
-            }
+            SkinSegmented(listOf("全部", "收藏", "吃过"), mode, { mode = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         }
         item { ChipRow(listOf("") + K.RCATS, { it == cat }, { cat = if (cat == it) "" else it }, label = { it.ifEmpty { "全部" } }, modifier = Modifier.padding(top = 8.dp)) }
         item {

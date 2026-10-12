@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package app.chisha.ui
 
@@ -139,6 +139,8 @@ fun SkinScaffold(
     snackbar: SnackbarHostState,
     onBack: (() -> Unit)? = null,
     largeTitle: Boolean = onBack == null,
+    subtitle: String? = null,
+    titleModifier: Modifier = Modifier,
     titleExtra: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -153,7 +155,7 @@ fun SkinScaffold(
         CompositionLocalProvider(LocalBackdrop provides backdrop, LocalHaze provides haze) {
             Scaffold(
                 containerColor = bg,
-                topBar = { AppleTopBar(title, onBack, largeTitle, titleExtra, actions) },
+                topBar = { AppleTopBar(title, onBack, largeTitle, subtitle, titleModifier, actions) },
                 bottomBar = bottomBar,
                 floatingActionButton = fab,
                 snackbarHost = { SnackbarHost(snackbar) },
@@ -166,8 +168,10 @@ fun SkinScaffold(
         Scaffold(
             modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
             topBar = {
-                LargeTopAppBar(
-                    title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                // 安卓 17：Expressive 的可伸缩大标题栏（带副标题，滚动时收起）
+                LargeFlexibleTopAppBar(
+                    title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = titleModifier) },
+                    subtitle = subtitle?.let { s -> { Text(s, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
                     navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
                     actions = { titleExtra?.invoke(); actions() },
                     scrollBehavior = scroll,
@@ -209,7 +213,8 @@ private fun AppleTopBar(
     title: String,
     onBack: (() -> Unit)?,
     large: Boolean,
-    extra: (@Composable () -> Unit)?,
+    subtitle: String?,
+    titleModifier: Modifier,
     actions: @Composable RowScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().topFade().statusBarsPadding().padding(bottom = 6.dp)) {
@@ -224,7 +229,6 @@ private fun AppleTopBar(
                 fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (large) extra?.invoke()
                 // 每个操作图标放进玻璃胶囊里
                 Row(
                     Modifier.height(44.dp).liquidGlass(blurDp = 6f, refraction = 12f).padding(horizontal = 2.dp),
@@ -234,10 +238,13 @@ private fun AppleTopBar(
                 }
             }
         }
-        if (large) Text(
-            title, Modifier.padding(start = 20.dp, end = 20.dp),
-            fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        if (large) {
+            Text(
+                title, Modifier.padding(start = 20.dp, end = 20.dp).then(titleModifier),
+                fontSize = 34.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            subtitle?.let { Text(it, Modifier.padding(start = 20.dp), fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
     }
 }
 

@@ -11,6 +11,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Coffee
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material3.ToggleFloatingActionButtonDefaults.animateIcon
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Kitchen
 import androidx.compose.material.icons.outlined.RestaurantMenu
@@ -117,7 +124,7 @@ fun ChishaApp(vm: AppViewModel) {
     CompositionLocalProvider(LocalToaster provides toaster, LocalNav provides nav) {
         Box(Modifier.fillMaxSize().blur(blur)) {
             if (!loaded) {
-                Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                Loading()
             } else SharedTransitionLayout {
                 CompositionLocalProvider(LocalSharedScope provides this) {
                     NavDisplay(
@@ -211,6 +218,35 @@ fun ChishaApp(vm: AppViewModel) {
 /** 列表要留出的上下空白（顶栏、底栏、悬浮按钮） */
 val LocalListPad = compositionLocalOf { PaddingValues(bottom = 96.dp) }
 
+/** 悬浮按钮菜单的一项 */
+private data class FabItem(val label: String, val icon: ImageVector, val action: () -> Unit)
+
+/** Expressive 的悬浮按钮菜单：点一下展开几个操作，图标从 + 变成 × */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun FabMenu(items: List<FabItem>) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val hp = rememberHaptics()
+    androidx.activity.compose.BackHandler(expanded) { expanded = false }
+    FloatingActionButtonMenu(
+        expanded = expanded,
+        button = {
+            ToggleFloatingActionButton(checked = expanded, onCheckedChange = { hp.tick(); expanded = it }) {
+                val icon = if (checkedProgress > 0.5f) Icons.Filled.Close else Icons.Filled.Add
+                Icon(icon, if (expanded) "收起" else "更多操作", Modifier.animateIcon({ checkedProgress }))
+            }
+        },
+    ) {
+        items.forEach { item ->
+            FloatingActionButtonMenuItem(
+                onClick = { expanded = false; item.action() },
+                text = { Text(item.label) },
+                icon = { Icon(item.icon, null) },
+            )
+        }
+    }
+}
+
 @Composable
 private fun Home(
     vm: AppViewModel,
@@ -221,69 +257,101 @@ private fun Home(
 ) {
     val data by vm.data.collectAsStateWithLifecycle()
     val nav = LocalNav.current
+    val toast = LocalToaster.current
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     val skin = LocalSkin.current
+    val hp = rememberHaptics()
     val urgentCount = data.inv.count { (K.daysLeft(it.exp) ?: 99) <= 3 || (K.supplyDays(it) ?: 99) <= 5 }
     val shopCount = data.shop.count { !it.done }
     val today = remember {
         val d = java.time.LocalDate.now()
         "${d.monthValue}月${d.dayOfMonth}日 周" + "一二三四五六日"[d.dayOfWeek.value - 1]
     }
-    val select: (Int) -> Unit = { i -> nav.tab(i); if (i != 1) onCookUrgent(false) }
+    val select: (Int) -> Unit = { i -> if (i != tab) hp.tick(); nav.tab(i); if (i != 1) onCookUrgent(false) }
+    // 平板、折叠屏展开：左侧导航栏；手机：底部导航栏
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
+    val badgeOf: (Int) -> Int = { i -> when (i) { 0 -> urgentCount; 2 -> shopCount; else -> 0 } }
 
-    SkinScaffold(
-        title = if (tab == 0) "今天吃啥" else TABS[tab].title,
-        snackbar = snackbar,
-        titleExtra = if (tab == 0) ({ Text(today, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }) else null,
-        actions = { IconButton(onClick = { nav.open(SettingsKey) }) { Icon(Icons.Outlined.Settings, "设置") } },
-        fab = {
-            when (tab) {
-                0 -> ExtendedFloatingActionButton(
-                    onClick = { nav.sheet(Sheet.Item(null)) },
-                    icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("添加食材") },
-                )
-                4 -> ExtendedFloatingActionButton(
-                    onClick = { nav.open(EditKey(null)) },
-                    icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("新菜") },
-                )
-            }
-        },
-        bottomBar = {
-            if (skin == Skin.APPLE) {
-                AppleTabBar(
-                    TABS.mapIndexed { i, t ->
-                        TabSpec(t.title, t.icon, when (i) { 0 -> urgentCount; 2 -> shopCount; else -> 0 },
-                            if (i == 2) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
-                    },
-                    tab, select,
-                )
-            } else NavigationBar {
-                TABS.forEachIndexed { i, t ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { select(i) },
-                        icon = {
-                            val badge = when (i) { 0 -> urgentCount; 2 -> shopCount; else -> 0 }
-                            BadgedBox(badge = {
-                                if (badge > 0) Badge(containerColor = if (i == 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) { Text("$badge") }
-                            }) { Icon(t.icon, t.title) }
+    @Composable
+    fun BadgedIcon(i: Int) {
+        val b = badgeOf(i)
+        BadgedBox(badge = {
+            if (b > 0) Badge(containerColor = if (i == 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) { Text("$b") }
+        }) { Icon(TABS[i].icon, TABS[i].title) }
+    }
+
+    val content: @Composable () -> Unit = {
+        SkinScaffold(
+            title = if (tab == 0) "今天吃啥" else TABS[tab].title,
+            snackbar = snackbar,
+            subtitle = if (tab == 0) today else null,
+            actions = { IconButton(onClick = { nav.open(SettingsKey) }) { Icon(Icons.Outlined.Settings, "设置") } },
+            fab = {
+                when (tab) {
+                    0 -> FabMenu(buildList {
+                        add(FabItem("添加食材", Icons.Outlined.Kitchen) { nav.sheet(Sheet.Item(null)) })
+                        add(FabItem("添加蛋白粉", Icons.Outlined.FitnessCenter) { nav.sheet(Sheet.Item(null, "蛋白粉")) })
+                        add(FabItem("添加咖啡豆", Icons.Outlined.Coffee) { nav.sheet(Sheet.Item(null, "咖啡豆")) })
+                        if (data.shop.any { it.done }) add(FabItem("买到的放进冰箱", Icons.Outlined.ShoppingCart) { nav.sheet(Sheet.Stock) })
+                    })
+                    4 -> FabMenu(listOf(
+                        FabItem("写一道新菜", Icons.Outlined.Edit) { nav.open(EditKey(null)) },
+                        FabItem("从剪贴板导入", Icons.Outlined.ContentPaste) { vm.clearDrafts(); nav.open(ImportKey) },
+                        FabItem("复制 GPT 提示词", Icons.Outlined.ContentCopy) {
+                            clip.setText(androidx.compose.ui.text.AnnotatedString(app.chisha.RecipeText.PROMPT)); toast.show("提示词已复制，去 GPT 里粘贴")
                         },
-                        label = { Text(t.title) },
-                    )
+                    ))
                 }
-            }
-        },
-    ) { pad ->
-        val listPad = PaddingValues(top = pad.calculateTopPadding() + 4.dp, bottom = pad.calculateBottomPadding() + 88.dp)
-        CompositionLocalProvider(LocalListPad provides listPad) {
-            when (tab) {
-                0 -> FridgeTab(vm, data, onGoCookUrgent = { onCookUrgent(true); nav.tab(1) })
-                1 -> CookTab(vm, data, cookUrgentOnly, onCookUrgent)
-                2 -> ShopTab(vm, data)
-                3 -> DrawTab(vm, data)
-                4 -> BookTab(vm, data)
+            },
+            bottomBar = {
+                if (skin == Skin.APPLE) {
+                    AppleTabBar(
+                        TABS.mapIndexed { i, t ->
+                            TabSpec(t.title, t.icon, badgeOf(i), if (i == 2) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                        },
+                        tab, select,
+                    )
+                } else if (!wide) {
+                    // 安卓 17：Expressive 的短导航栏
+                    ShortNavigationBar {
+                        TABS.forEachIndexed { i, t ->
+                            ShortNavigationBarItem(
+                                selected = tab == i,
+                                onClick = { select(i) },
+                                icon = { BadgedIcon(i) },
+                                label = { Text(t.title) },
+                            )
+                        }
+                    }
+                }
+            },
+        ) { pad ->
+            val listPad = PaddingValues(top = pad.calculateTopPadding() + 4.dp, bottom = pad.calculateBottomPadding() + 88.dp)
+            CompositionLocalProvider(LocalListPad provides listPad) {
+                Box(Modifier.fillMaxSize().then(if (wide) Modifier.wrapContentWidth().widthIn(max = 720.dp) else Modifier)) {
+                    when (tab) {
+                        0 -> FridgeTab(vm, data, onGoCookUrgent = { onCookUrgent(true); nav.tab(1) })
+                        1 -> CookTab(vm, data, cookUrgentOnly, onCookUrgent)
+                        2 -> ShopTab(vm, data)
+                        3 -> DrawTab(vm, data)
+                        4 -> BookTab(vm, data)
+                    }
+                }
             }
         }
     }
+
+    if (wide && skin == Skin.ANDROID) {
+        Row(Modifier.fillMaxSize()) {
+            WideNavigationRail {
+                TABS.forEachIndexed { i, t ->
+                    WideNavigationRailItem(
+                        selected = tab == i, onClick = { select(i) },
+                        icon = { BadgedIcon(i) }, label = { Text(t.title) }, railExpanded = false,
+                    )
+                }
+            }
+            Box(Modifier.weight(1f)) { content() }
+        }
+    } else content()
 }

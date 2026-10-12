@@ -63,12 +63,10 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
     SkinScaffold(title = "设置", snackbar = snackbar, onBack = nav.back) { pad ->
         Column(Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 32.dp)) {
             SectionTitle("外观")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                listOf("android" to "安卓 17", "apple" to "苹果 Liquid Glass").forEachIndexed { i, (k, l) ->
-                    SegmentedButton(selected = data.settings.skin == k, onClick = { vm.setSkin(k) }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
-                }
-            }
-            Hint("安卓 17：配色跟随壁纸，Material 3 Expressive。苹果：iOS 系统色，导航栏和底栏是磨砂玻璃（安卓 12 及以上才有模糊效果）。")
+            val skins = listOf("android", "apple")
+            SkinSegmented(listOf("安卓 17", "苹果 Liquid Glass"), skins.indexOf(data.settings.skin).coerceAtLeast(0), { vm.setSkin(skins[it]) },
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            Hint("安卓 17：配色跟随壁纸，Material 3 Expressive。苹果：iOS 系统色和控件，底栏、按钮是液态玻璃（安卓 13 及以上有折射，12 只有模糊）。")
 
             SectionTitle("健身")
             GroupItem(0, 1, onClick = { vm.setMuscle(!data.settings.muscle) }) {
@@ -76,7 +74,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
                     Text("增肌：优先推荐高蛋白", style = MaterialTheme.typography.bodyLarge)
                     Text("“做什么”和抽签会把蛋白质多的菜排前面。每人份 ${K.HIGH_PROTEIN} 克以上算高蛋白（估算值）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(data.settings.muscle, { vm.setMuscle(it) })
+                SkinSwitch(data.settings.muscle, { vm.setMuscle(it) })
             }
 
             SectionTitle("提醒")
@@ -85,7 +83,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
                     Text("每天早上 9 点提醒", style = MaterialTheme.typography.bodyLarge)
                     Text("有食材快到期、蛋白粉咖啡豆快用完时发通知；没事就不打扰", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(data.settings.notify, { vm.setNotify(it) })
+                SkinSwitch(data.settings.notify, { vm.setNotify(it) })
             }
 
             SectionTitle("调料")
@@ -94,7 +92,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
                     Text("调料默认家里有", style = MaterialTheme.typography.bodyLarge)
                     Text("盐、生抽、葱姜蒜、花椒这类不算“缺”，也不进购物清单", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(data.settings.seasonHave, { vm.setSeasonHave(it) })
+                SkinSwitch(data.settings.seasonHave, { vm.setSeasonHave(it) })
             }
 
             SectionTitle("菜谱文件", recipes.size)
