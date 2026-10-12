@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
@@ -42,9 +44,18 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
             onFailure = { toast.show("导出失败：${it.message ?: "写不进这个位置"}") },
         )
     }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.readRecipeFile(uri).fold(
-            onSuccess = { preview = it },
+        if (uri != null) vm.readText(uri).fold(
+            onSuccess = { text ->
+                if (vm.isJsonFile(text)) vm.readRecipeJson(text).fold(
+                    onSuccess = { preview = it },
+                    onFailure = { importErr = it.message ?: "导入失败" },
+                ) else {
+                    // 文字模板（比如 GPT 整理的 .txt）：进识别预览
+                    if (vm.parseText(text) > 0) nav.open(ImportKey) else importErr = "文件里没认出菜谱。文字菜谱需要有【菜名】【原料】【做法】。"
+                }
+            },
             onFailure = { importErr = it.message ?: "导入失败" },
         )
     }
@@ -87,14 +98,19 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
             }
 
             SectionTitle("菜谱文件", recipes.size)
+            Row3(Icons.Outlined.ContentPaste, "从剪贴板导入", "GPT 整理好的菜谱文字，复制后点这里", 0, 2) { vm.clearDrafts(); nav.open(ImportKey) }
+            Row3(Icons.Outlined.ContentCopy, "复制给 GPT 的提示词", "让 GPT 按固定格式整理做饭视频", 1, 2) {
+                clip.setText(androidx.compose.ui.text.AnnotatedString(app.chisha.RecipeText.PROMPT)); toast.show("提示词已复制，去 GPT 里粘贴")
+            }
+            Spacer(Modifier.height(12.dp))
             Row3(Icons.Outlined.FileDownload, "导出菜谱文件", "存成 .json 文件，可以发到电脑或微信里改", 0, 3) {
                 exporter.launch("今天吃啥菜谱.json")
             }
-            Row3(Icons.Outlined.FileUpload, "导入菜谱文件", "格式不对会整份拒绝，并告诉你哪道菜哪里有问题", 1, 3) {
+            Row3(Icons.Outlined.FileUpload, "导入菜谱文件", "App 导出的 .json，或 GPT 整理的 .txt 文字菜谱都行", 1, 3) {
                 importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
             }
             Row3(Icons.Outlined.RestartAlt, "恢复默认菜谱", "丢掉所有改动，回到自带的 198 道菜", 2, 3) { confirmReset = true }
-            Hint("文件里只能改每道菜的内容：菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡，也可以增删菜。字段名和结构不能改。分类只能是荤菜、素菜、水产、汤羹、主食、早餐。")
+            Hint("文件里只能改每道菜的内容：菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡、来源，也可以增删菜。字段名和结构不能改。分类只能是荤菜、素菜、水产、汤羹、主食、早餐。")
 
             SectionTitle("从网页版搬过来")
             Hint("在网页版的“设置与备份”里点“生成备份文本”并复制，粘贴到下面。会替换这里冰箱和清单的内容。")

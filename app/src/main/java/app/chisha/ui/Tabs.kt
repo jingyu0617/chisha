@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Refresh
@@ -529,6 +530,8 @@ private fun MealPlan(
 fun BookTab(vm: AppViewModel, data: AppData) {
     val recipes by vm.recipes.collectAsState()
     val nav = LocalNav.current
+    val toast = LocalToaster.current
+    val clip = LocalClipboardManager.current
     var q by rememberSaveable { mutableStateOf("") }
     var mode by rememberSaveable { mutableIntStateOf(0) }
     var cat by rememberSaveable { mutableStateOf("") }
@@ -555,6 +558,14 @@ fun BookTab(vm: AppViewModel, data: AppData) {
             }
         }
         item { ChipRow(listOf("") + K.RCATS, { it == cat }, { cat = if (cat == it) "" else it }, label = { it.ifEmpty { "全部" } }, modifier = Modifier.padding(top = 8.dp)) }
+        item {
+            Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = { vm.clearDrafts(); nav.open(ImportKey) }, label = { Text("从剪贴板导入") },
+                    leadingIcon = { Icon(Icons.Outlined.ContentPaste, null, Modifier.size(18.dp)) })
+                AssistChip(onClick = { clip.setText(AnnotatedString(app.chisha.RecipeText.PROMPT)); toast.show("提示词已复制，去 GPT 里粘贴") },
+                    label = { Text("复制 GPT 提示词") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)) })
+            }
+        }
         item { SectionTitle("${list.size} 道") }
         if (list.isEmpty()) item {
             EmptyCard(when (mode) {

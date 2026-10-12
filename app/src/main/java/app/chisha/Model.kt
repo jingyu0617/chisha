@@ -21,6 +21,7 @@ data class Recipe(
     val src: String = "m",
     val protein: Int? = null,   // 每人份蛋白质（克，估算）
     val kcal: Int? = null,      // 每人份热量（千卡，估算）
+    val source: String? = null, // 来源链接（比如做饭视频）
 )
 
 @Serializable
@@ -91,7 +92,7 @@ data class AppData(
 /* ---------- 菜谱文件（导入/导出用，字段名固定为中文） ---------- */
 
 const val RECIPE_FILE_FORMAT = "今天吃啥菜谱"
-const val RECIPE_FILE_VERSION = 2
+const val RECIPE_FILE_VERSION = 3
 
 @Serializable
 data class RecipeFile(
@@ -116,6 +117,7 @@ data class RecipeEntry(
     @SerialName("小贴士") val tips: List<String> = emptyList(),
     @SerialName("蛋白质克") val protein: Int? = null,
     @SerialName("热量千卡") val kcal: Int? = null,
+    @SerialName("来源") val source: String? = null,
 )
 
 /* ---------- 网页版备份（迁移用） ---------- */

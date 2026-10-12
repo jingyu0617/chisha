@@ -16,6 +16,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -41,6 +44,8 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var menu by remember { mutableStateOf(false) }
     var confirmDel by remember { mutableStateOf(false) }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val live = remember(data.inv) { liveInv(data.inv) }
     val miss = missingFor(r, live, data.settings.seasonHave)
     val fav = r.name in data.favs
@@ -58,6 +63,9 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "更多") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {
+                    DropdownMenuItem(text = { Text("复制为文字") }, leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) }, onClick = {
+                        menu = false; clip.setText(AnnotatedString(RecipeText.format(r))); toast.show("已复制，可以发给家人或贴给 GPT 改")
+                    })
                     DropdownMenuItem(text = { Text("删除这道菜") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = { menu = false; confirmDel = true })
                 }
             }
@@ -89,6 +97,17 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
             }
             if (r.desc.isNotBlank()) item {
                 Text(r.desc, Modifier.padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
+            }
+            r.source?.let { src ->
+                item {
+                    FilledTonalButton(onClick = {
+                        if (src.startsWith("http")) runCatching { uri.openUri(src) }.onFailure { clip.setText(AnnotatedString(src)); toast.show("打不开，链接已复制") }
+                        else { clip.setText(AnnotatedString(src)); toast.show("来源已复制") }
+                    }, Modifier.padding(horizontal = 16.dp)) {
+                        Icon(Icons.Outlined.PlayCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(if (src.startsWith("http")) "看原视频" else "来源：$src", maxLines = 1)
+                    }
+                }
             }
             item { SectionTitle("对照冰箱") }
             itemsIndexed(r.ingredients) { i, line ->
@@ -178,7 +197,11 @@ private fun IngStatus(line: String, live: List<InvItem>) {
 /* ======================= 编辑菜谱 ======================= */
 
 @Composable
-fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) {
+fun RecipeEditScreen(
+    vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState,
+    title: String? = null,
+    onSave: ((Recipe) -> String?)? = null,   // 导入预览里改草稿时用
+) {
     val nav = LocalNav.current
     val toast = LocalToaster.current
     var name by remember { mutableStateOf(r?.name ?: "") }
@@ -188,6 +211,7 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
     var spicy by remember { mutableStateOf(r?.spicy ?: false) }
     var meat by remember { mutableStateOf(r?.meat ?: false) }
     var desc by remember { mutableStateOf(r?.desc ?: "") }
+    var source by remember { mutableStateOf(r?.source ?: "") }
     var protein by remember { mutableStateOf(r?.protein?.toString() ?: "") }
     var kcal by remember { mutableStateOf(r?.kcal?.toString() ?: "") }
     val ings = remember { (r?.ingredients ?: listOf("")).toMutableStateList() }
@@ -202,6 +226,7 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
         spicy = spicy, meat = meat, desc = desc, ingredients = ings.toList(), amounts = amts.toList(),
         steps = steps.toList(), tips = tips.toList(), src = r?.src ?: "u",
         protein = protein.trim().toIntOrNull(), kcal = kcal.trim().toIntOrNull(),
+        source = source.trim().ifEmpty { null },
     )
     val original = remember { build() }
     val dirty = build() != original
@@ -211,14 +236,14 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
     fun save() {
         if (minutes.isNotBlank() && minutes.trim().toIntOrNull() == null) { error = "时间请填数字（分钟）"; return }
         val rec = build().let { if (it.id.isEmpty()) it.copy(id = vm.newRecipeId()) else it }
-        val err = vm.saveRecipe(rec)
+        val err = if (onSave != null) onSave(rec) else vm.saveRecipe(rec)
         if (err != null) { error = err; return }
         nav.back()
-        toast.show(if (r == null) "已添加 ${rec.name.trim()}" else "已保存")
+        toast.show(if (onSave != null) "已更新，记得回去点导入" else if (r == null) "已添加 ${rec.name.trim()}" else "已保存")
     }
 
     SkinScaffold(
-        title = if (r == null) "新菜" else "编辑菜谱",
+        title = title ?: if (r == null) "新菜" else "编辑菜谱",
         snackbar = snackbar,
         onBack = { if (dirty) askLeave = true else nav.back() },
         largeTitle = false,
@@ -261,6 +286,7 @@ fun RecipeEditScreen(vm: AppViewModel, r: Recipe?, snackbar: SnackbarHostState) 
                 )
             }
             OutlinedTextField(desc, { desc = it }, label = { Text("简介（可不填）") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(source, { source = it }, label = { Text("来源链接（可不填，比如做饭视频）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             ListEditor("原料", "一行一样，如：五花肉", ings, numbered = false)
             ListEditor("用量", "如：五花肉 200g（可不填）", amts, numbered = false)
             ListEditor("做法", "这一步做什么", steps, numbered = true)

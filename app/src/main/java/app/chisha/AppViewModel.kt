@@ -379,9 +379,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun exportRecipes(uri: Uri): Result<Int> = runCatching {
         val file = RecipeFile(
             format = RECIPE_FILE_FORMAT, version = RECIPE_FILE_VERSION,
-            note = "可以修改菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡的内容，也可以增删菜。字段名和结构不要改，否则导入会被拒绝。分类只能是：荤菜、素菜、水产、汤羹、主食、早餐。",
+            note = "可以修改菜名、分类、难度、分钟、辣、含肉、简介、原料、用量、做法、小贴士、蛋白质克、热量千卡、来源的内容，也可以增删菜。字段名和结构不要改，否则导入会被拒绝。分类只能是：荤菜、素菜、水产、汤羹、主食、早餐。",
             recipes = _recipes.value.map {
-                RecipeEntry(it.name, it.cat, it.diff, it.minutes, it.spicy, it.meat, it.desc, it.ingredients, it.amounts, it.steps, it.tips, it.protein, it.kcal)
+                RecipeEntry(it.name, it.cat, it.diff, it.minutes, it.spicy, it.meat, it.desc, it.ingredients, it.amounts, it.steps, it.tips, it.protein, it.kcal, it.source)
             },
         )
         val text = prettyJson.encodeToString(RecipeFile.serializer(), file)
@@ -392,12 +392,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     data class ImportPreview(val entries: List<RecipeEntry>, val added: Int, val updated: Int)
 
     /** 读文件并逐项校验；任何一处不合格就整份拒绝，返回失败原因 */
-    fun readRecipeFile(uri: Uri): Result<ImportPreview> {
-        val text = try {
-            getApplication<Application>().contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }.removePrefix("﻿")
-        } catch (e: Exception) {
-            return Result.failure(IllegalArgumentException("读不了这个文件"))
-        }
+    /** 读出文件里的文字（.json 或 .txt 都行） */
+    fun readText(uri: Uri): Result<String> = try {
+        Result.success(getApplication<Application>().contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }.trimStart('\uFEFF'))
+    } catch (e: Exception) {
+        Result.failure(IllegalArgumentException("读不了这个文件"))
+    }
+
+    /** 文件内容是 App 导出的 JSON 菜谱文件吗（否则按文字模板识别） */
+    fun isJsonFile(text: String) = text.trimStart().startsWith("{")
+
+    fun readRecipeFile(uri: Uri): Result<ImportPreview> = readText(uri).fold({ readRecipeJson(it) }, { Result.failure(it) })
+
+    fun readRecipeJson(text: String): Result<ImportPreview> {
         val file = try {
             prettyJson.decodeFromString(RecipeFile.serializer(), text)
         } catch (e: Exception) {
@@ -409,7 +416,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             ))
         }
         if (file.format != RECIPE_FILE_FORMAT) return Result.failure(IllegalArgumentException("这不是「今天吃啥」的菜谱文件"))
-        if (file.version != 1 && file.version != RECIPE_FILE_VERSION) return Result.failure(IllegalArgumentException("菜谱文件版本是 ${file.version}，这个 App 只认版本 $RECIPE_FILE_VERSION"))
+        if (file.version !in 1..RECIPE_FILE_VERSION) return Result.failure(IllegalArgumentException("菜谱文件版本是 ${file.version}，这个 App 只认版本 $RECIPE_FILE_VERSION"))
         if (file.recipes.isEmpty()) return Result.failure(IllegalArgumentException("文件里一道菜都没有"))
         val seen = HashSet<String>()
         file.recipes.forEachIndexed { i, e ->
@@ -429,6 +436,79 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return Result.success(ImportPreview(file.recipes, file.recipes.size - upd, upd))
     }
 
+    /* ---------- 文字模板导入 ---------- */
+
+    enum class Conflict(val label: String) { OVERWRITE("覆盖"), COPY("另存"), SKIP("跳过") }
+
+    data class Draft(val recipe: Recipe, val warnings: List<String>, val errors: List<String>, val selected: Boolean, val conflict: Conflict)
+
+    private val _drafts = MutableStateFlow<List<Draft>>(emptyList())
+    val drafts: StateFlow<List<Draft>> = _drafts.asStateFlow()
+
+    /** 识别文字，返回识别出几道 */
+    fun parseText(text: String): Int {
+        val ps = RecipeText.parse(text)
+        _drafts.value = ps.map { Draft(it.recipe, it.warnings, it.errors, selected = it.ok, conflict = Conflict.OVERWRITE) }
+        return ps.size
+    }
+
+    fun clearDrafts() { _drafts.value = emptyList() }
+    fun toggleDraft(i: Int) = _drafts.update { l -> l.mapIndexed { j, d -> if (j == i && d.errors.isEmpty()) d.copy(selected = !d.selected) else d } }
+    fun setConflict(i: Int, c: Conflict) = _drafts.update { l -> l.mapIndexed { j, d -> if (j == i) d.copy(conflict = c) else d } }
+
+    /** 预览里改过一道：重新检查，有问题就返回提示 */
+    fun updateDraft(i: Int, r: Recipe): String? {
+        val clean = r.copy(
+            name = r.name.trim(), ingredients = r.ingredients.map { it.trim() }.filter { it.isNotEmpty() },
+            amounts = r.amounts.map { it.trim() }.filter { it.isNotEmpty() }, steps = r.steps.map { it.trim() }.filter { it.isNotEmpty() },
+            tips = r.tips.map { it.trim() }.filter { it.isNotEmpty() },
+        )
+        validateFields(clean)?.let { return it }
+        _drafts.update { l -> l.mapIndexed { j, d -> if (j == i) d.copy(recipe = clean, errors = emptyList(), selected = true) else d } }
+        return null
+    }
+
+    fun draftNameExists(name: String) = _recipes.value.any { it.name == name.trim() }
+
+    /** 导入选中的草稿，返回导入了几道 */
+    fun importDrafts(): Int {
+        undoRecipes = _recipes.value
+        var list = _recipes.value
+        var n = 0
+        for (d in _drafts.value) {
+            if (!d.selected || d.errors.isNotEmpty()) continue
+            val r = d.recipe
+            val idx = list.indexOfFirst { it.name == r.name }
+            if (idx >= 0) {
+                when (d.conflict) {
+                    Conflict.SKIP -> continue
+                    Conflict.OVERWRITE -> {
+                        val old = list[idx]
+                        list = list.toMutableList().also { it[idx] = r.copy(id = old.id, src = old.src) }
+                    }
+                    Conflict.COPY -> {
+                        var k = 2
+                        while (list.any { it.name == "${r.name}（$k）" }) k++
+                        list = list + r.copy(id = newId("u"), name = "${r.name}（$k）")
+                    }
+                }
+            } else list = list + r.copy(id = newId("u"))
+            n++
+        }
+        _recipes.value = list
+        _drafts.value = emptyList()
+        return n
+    }
+
+    /** 不含“重名”检查的字段校验 */
+    fun validateFields(r: Recipe): String? {
+        if (r.name.isBlank()) return "菜名不能为空"
+        if (r.cat !in K.RCATS) return "分类只能是：${K.RCATS.joinToString("、")}"
+        if (r.ingredients.none { it.isNotBlank() }) return "至少要有一样原料"
+        if (r.steps.none { it.isNotBlank() }) return "至少要有一步做法"
+        return null
+    }
+
     /** replaceAll=true 用文件替换全部；否则同名覆盖、新菜追加 */
     fun applyImport(p: ImportPreview, replaceAll: Boolean) {
         undoRecipes = _recipes.value
@@ -443,7 +523,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 steps = e.steps.map { it.trim() }.filter { it.isNotEmpty() },
                 tips = e.tips.map { it.trim() }.filter { it.isNotEmpty() },
                 src = byName[n]?.src ?: "u",
-                protein = e.protein, kcal = e.kcal,
+                protein = e.protein, kcal = e.kcal, source = e.source?.takeIf { it.isNotBlank() },
             )
         }
         _recipes.value = if (replaceAll) incoming else {

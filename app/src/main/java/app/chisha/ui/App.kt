@@ -42,6 +42,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object SettingsKey : NavKey
 @Serializable data class DetailKey(val id: String) : NavKey
 @Serializable data class EditKey(val id: String?) : NavKey
+@Serializable data object ImportKey : NavKey
 
 /** 底部弹层：添加/编辑食材、做完扣库存、买到入库 */
 sealed interface Sheet {
@@ -174,8 +175,21 @@ fun ChishaApp(vm: AppViewModel) {
                             }
                             entry<EditKey> { k ->
                                 Box(Modifier.predictiveCorners()) {
-                                    RecipeEditScreen(vm, k.id?.let { id -> recipes.firstOrNull { it.id == id } }, snackbar)
+                                    val id = k.id
+                                    if (id != null && id.startsWith("draft:")) {
+                                        // 导入预览里的草稿：改完回到预览，不直接存进菜谱
+                                        val i = id.removePrefix("draft:").toIntOrNull() ?: -1
+                                        val drafts by vm.drafts.collectAsStateWithLifecycle()
+                                        val d = drafts.getOrNull(i)
+                                        if (d != null) RecipeEditScreen(vm, d.recipe, snackbar, title = "检查这道菜", onSave = { vm.updateDraft(i, it) })
+                                        else LaunchedEffect(k) { nav.back() }
+                                    } else {
+                                        RecipeEditScreen(vm, id?.let { x -> recipes.firstOrNull { it.id == x } }, snackbar)
+                                    }
                                 }
+                            }
+                            entry<ImportKey> {
+                                Box(Modifier.predictiveCorners()) { ImportScreen(vm, snackbar) }
                             }
                             entry<SettingsKey> {
                                 Box(Modifier.predictiveCorners()) { SettingsScreen(vm, data, snackbar) }
