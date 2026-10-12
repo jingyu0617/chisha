@@ -97,7 +97,6 @@ private fun SearchScaffold(
     val text = rememberTextFieldState()
     val state = rememberContainedSearchBarState()
     val scope = rememberCoroutineScope()
-    val scroll = SearchBarDefaults.enterAlwaysSearchBarScrollBehavior()
     val colors = SearchBarDefaults.appBarWithSearchColors(searchBarColors = SearchBarDefaults.containedColors(state = state))
     val close: () -> Unit = { scope.launch { state.animateToCollapsed() } }
     val input = @Composable {
@@ -117,10 +116,10 @@ private fun SearchScaffold(
             },
         )
     }
+    // 搜索栏固定在顶上，不随滚动藏起来（藏起来时内容会透到状态栏下面）
     Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = {
-            AppBarWithSearch(state = state, inputField = input, scrollBehavior = scroll, colors = colors, actions = actions)
+            AppBarWithSearch(state = state, inputField = input, colors = colors, actions = actions)
             ExpandedFullScreenContainedSearchBar(state = state, inputField = input, colors = colors.searchBarColors) {
                 search.results(text.text.toString(), close)
             }

@@ -56,11 +56,19 @@ shoot_all() {
   sleep 8
   shot "$m-01-冰箱"
   adb shell input swipe 540 1700 540 700 500; sleep 2; shot "$m-02-冰箱-往下滑"
+  tap_text "在冰箱里找食材"; adb shell input text "egg"; sleep 2; shot "$m-02b-搜索展开"
+  adb shell input keyevent 4; sleep 1; adb shell input keyevent 4; sleep 2
   tap_text "做什么"; shot "$m-03-做什么"
-  tap_text "清单";   shot "$m-04-清单"
+  tap_text "清单"
+  if [ "$m" = "浅色" ]; then
+    tap_text "要买什么"; adb shell input text "milk%sbeef%sapple"; adb shell input keyevent 66; sleep 1
+    adb shell input keyevent 4; sleep 1
+  fi
+  shot "$m-04-清单"
   tap_text "抽签";   shot "$m-05-抽签"
   tap_text "菜谱";   shot "$m-06-菜谱"
   tap_text "京酱肉丝" "农家一碗香" "凉拌鸡丝" "番茄炒蛋"; sleep 1; shot "$m-07-菜谱详情"
+  adb shell input swipe 540 1800 540 500 600; sleep 2; shot "$m-07b-菜谱详情-往下"
   adb shell input keyevent 4; sleep 2
   tap_text "冰箱"
   tap_text "设置";   shot "$m-08-设置"

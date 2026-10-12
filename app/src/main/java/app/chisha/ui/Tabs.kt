@@ -346,7 +346,7 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
         }
         item {
             Row(Modifier.padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (todo.isEmpty()) "菜谱里点“把缺的加入清单”也会加到这里" else "要买 ${todo.size} 样",
+                if (todo.isNotEmpty()) Text("要买 ${todo.size} 样",
                     Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (todo.isNotEmpty()) TextButton(onClick = { clip.setText(AnnotatedString(vm.shopText())); toast.show("已复制，可以粘贴到微信") }) {
                     Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("复制清单")
@@ -390,10 +390,9 @@ fun ShopTab(vm: AppViewModel, data: AppData) {
 
 @Composable
 private fun ShopRow(vm: AppViewModel, it: ShopItem, i: Int, n: Int) {
-    // 官方 SegmentedListItem 的“勾选”形态：整行点一下就勾上/取消
+    // 官方 SegmentedListItem：整行点一下就勾上/取消，左边官方 Checkbox 显示状态
     SegmentedListItem(
-        checked = it.done,
-        onCheckedChange = { _ -> vm.toggleShop(it.id) },
+        onClick = { vm.toggleShop(it.id) },
         shapes = ListItemDefaults.segmentedShapes(i, n),
         colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         leadingContent = { Checkbox(checked = it.done, onCheckedChange = null) },

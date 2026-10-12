@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -132,19 +133,20 @@ fun GroupItem(
 }
 
 /**
- * 带开关的列表行：官方 SegmentedListItem 的“可勾选”形态，整行都能点，右边是官方 Switch。
+ * 带开关的列表行：官方 SegmentedListItem（可点击形态，整行都能点）+ 右边官方 Switch。
+ * 不用“可勾选”形态，那个会把打开的整行涂成选中色，适合多选列表，不适合设置开关。
  */
 @Composable
 fun SwitchItem(index: Int, size: Int, checked: Boolean, onCheckedChange: (Boolean) -> Unit, title: String, sub: String? = null, inset: Boolean = true) {
     val hp = rememberHaptics()
     SegmentedListItem(
-        checked = checked,
-        onCheckedChange = { hp.toggle(it); onCheckedChange(it) },
+        onClick = { hp.toggle(!checked); onCheckedChange(!checked) },
         shapes = ListItemDefaults.segmentedShapes(index, size),
         colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         supportingContent = sub?.let { { Text(it) } },
         trailingContent = { Switch(checked = checked, onCheckedChange = null) },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = if (inset) 16.dp else 0.dp).padding(bottom = ListItemDefaults.SegmentedGap),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = if (inset) 16.dp else 0.dp).padding(bottom = ListItemDefaults.SegmentedGap)
+            .semantics { role = Role.Switch; stateDescription = if (checked) "已打开" else "已关闭" },
     ) { Text(title) }
 }
 
