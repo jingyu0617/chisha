@@ -1,16 +1,11 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 
 package app.chisha.ui
 
-import androidx.activity.BackEventCompat
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animate
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,23 +21,27 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import androidx.navigation3.ui.NavDisplay
 import app.chisha.AppViewModel
 import app.chisha.InvItem
 import app.chisha.K
 import app.chisha.Recipe
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
-sealed interface Route {
-    data object Settings : Route
-    data class Detail(val id: String) : Route
-    data class Edit(val id: String?) : Route
-}
+/* 页面（官方 Navigation 3 的导航键，可序列化：旋转屏幕、App 被回收后都能恢复） */
+@Serializable data object HomeKey : NavKey
+@Serializable data object SettingsKey : NavKey
+@Serializable data class DetailKey(val id: String) : NavKey
+@Serializable data class EditKey(val id: String?) : NavKey
 
 /** 底部弹层：添加/编辑食材、做完扣库存、买到入库 */
 sealed interface Sheet {
@@ -63,7 +62,7 @@ private val TABS = listOf(
 
 /** 页面间共享的导航动作 */
 class Nav(
-    val open: (Route) -> Unit,
+    val open: (NavKey) -> Unit,
     val back: () -> Unit,
     val sheet: (Sheet?) -> Unit,
     val tab: (Int) -> Unit,
@@ -71,9 +70,19 @@ class Nav(
 
 val LocalNav = staticCompositionLocalOf<Nav> { error("no nav") }
 
-/** 页面栈里的一页；appear 从 0 到 1 表示进入动画 */
-private class Entry(val route: Route, val id: Long) {
-    val appear = Animatable(0f)
+/** 共享元素动画用：列表卡片 → 详情页 */
+val LocalSharedScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
+
+/**
+ * 预见性返回时，被拖走的页面四角逐渐变圆（安卓 17 规范的效果）。
+ * 进度来自 Navigation 3 的转场，手势拖多少，圆角就变多少。
+ */
+@Composable
+private fun Modifier.predictiveCorners(): Modifier {
+    if (LocalSkin.current == Skin.APPLE) return this
+    val scope = LocalNavAnimatedContentScope.current
+    val r by scope.transition.animateDp(label = "corner") { if (it == EnterExitState.PostExit) 32.dp else 0.dp }
+    return if (r > 0.dp) this.clip(RoundedCornerShape(r)) else this
 }
 
 @Composable
@@ -88,122 +97,91 @@ fun ChishaApp(vm: AppViewModel) {
     val toaster = remember { Toaster(snackbar, scope) }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val stack = remember { mutableStateListOf<Entry>() }
-    var nextId by remember { mutableLongStateOf(1L) }
+    val backStack = rememberNavBackStack(HomeKey)
     var sheet by remember { mutableStateOf<Sheet?>(null) }
-    var cookUrgentOnly by remember { mutableStateOf(false) }
+    var cookUrgentOnly by rememberSaveable { mutableStateOf(false) }
 
-    // 预见性返回：手势进度（0~1）和从哪边滑
-    var backProgress by remember { mutableFloatStateOf(0f) }
-    var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
-    var closing by remember { mutableStateOf(false) }
-
-    val nav = remember {
+    val nav = remember(backStack) {
         Nav(
-            open = { r ->
-                val e = Entry(r, nextId++)
-                stack.add(e)
-                scope.launch { e.appear.animateTo(1f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) }
-            },
-            back = {
-                val e = stack.lastOrNull()
-                if (e != null && !closing) {
-                    closing = true
-                    scope.launch {
-                        e.appear.animateTo(0f, tween(260))
-                        stack.remove(e); closing = false
-                    }
-                }
-            },
+            open = { backStack.add(it) },
+            back = { if (backStack.size > 1) backStack.removeLastOrNull() },
             sheet = { sheet = it },
             tab = { tab = it },
         )
-    }
-
-    PredictiveBackHandler(enabled = stack.isNotEmpty() && !closing) { events ->
-        try {
-            events.collect { ev ->
-                backProgress = ev.progress
-                backEdge = ev.swipeEdge
-            }
-            // 松手确认返回：从当前进度接着滑完
-            val e = stack.lastOrNull()
-            closing = true
-            scope.launch {
-                animate(backProgress, 1f, animationSpec = tween(180)) { v, _ -> backProgress = v }
-                if (e != null) { e.appear.snapTo(0f); stack.remove(e) }
-                backProgress = 0f; closing = false
-            }
-        } catch (c: CancellationException) {
-            // 取消返回：弹回原位
-            scope.launch { animate(backProgress, 0f, animationSpec = spring()) { v, _ -> backProgress = v } }
-            throw c
-        }
     }
 
     // 弹层打开时，后面的内容做模糊（安卓 12 及以上生效）
     val blur by animateDpAsState(if (sheet != null) 18.dp else 0.dp, label = "blur")
 
     CompositionLocalProvider(LocalToaster provides toaster, LocalNav provides nav) {
-        BoxWithConstraints(Modifier.fillMaxSize().blur(blur)) {
-            val w = constraints.maxWidth.toFloat()
+        Box(Modifier.fillMaxSize().blur(blur)) {
             if (!loaded) {
                 Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            } else {
-                val top = stack.lastOrNull()
-                val tAppear = top?.appear?.value ?: 0f
-                // 下面那一层（首页或上一页）：苹果外观有视差，安卓外观轻微缩放 + 变暗
-                fun Modifier.under(): Modifier = this.graphicsLayer {
-                    if (top == null) return@graphicsLayer
-                    val cover = tAppear * (1f - backProgress)
-                    if (skin == Skin.APPLE) translationX = -0.3f * w * cover
-                    else { val s = 1f - 0.04f * cover; scaleX = s; scaleY = s }
-                }
-                Box(Modifier.fillMaxSize().under()) {
-                    Home(vm, tab, snackbar, cookUrgentOnly, onCookUrgent = { cookUrgentOnly = it })
-                }
-                if (top != null) {
-                    // 变暗遮罩
-                    val dim = (if (skin == Skin.APPLE) 0.12f else 0.32f) * tAppear * (1f - backProgress)
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
-                }
-                stack.forEachIndexed { i, e ->
-                    if (i < stack.size - 2) return@forEachIndexed
-                    val isTop = i == stack.lastIndex
-                    key(e.id) {
-                        Box(
-                            Modifier.fillMaxSize().graphicsLayer {
-                                val t = e.appear.value
-                                if (isTop) {
-                                    val p = backProgress
-                                    if (skin == Skin.APPLE) {
-                                        // iOS：整页从右滑入，返回时跟着手指往右滑
-                                        translationX = (1f - t) * w + p * w
-                                        shadowElevation = 24f
-                                    } else {
-                                        // 安卓 17：进入是淡入 + 小位移；返回手势时缩小、圆角、贴向一侧
-                                        alpha = t
-                                        val sign = if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
-                                        translationX = (1f - t) * 0.12f * w + sign * p * (w * 0.06f)
-                                        val s = 1f - 0.1f * p
-                                        scaleX = s; scaleY = s
-                                        shape = RoundedCornerShape((32f * p).dp)
-                                        clip = p > 0f
-                                    }
-                                } else if (skin == Skin.APPLE) {
-                                    val tt = top?.appear?.value ?: 0f
-                                    translationX = -0.3f * w * tt * (1f - backProgress)
-                                }
-                            },
-                        ) {
-                            when (val r = e.route) {
-                                is Route.Detail -> recipes.firstOrNull { it.id == r.id }?.let { RecipeDetailScreen(vm, it, data, snackbar) }
-                                    ?: LaunchedEffect(r) { stack.remove(e) }
-                                is Route.Edit -> RecipeEditScreen(vm, r.id?.let { id -> recipes.firstOrNull { it.id == id } }, snackbar)
-                                Route.Settings -> SettingsScreen(vm, data, snackbar)
+            } else SharedTransitionLayout {
+                CompositionLocalProvider(LocalSharedScope provides this) {
+                    NavDisplay(
+                        backStack = backStack,
+                        onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
+                        entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
+                        sharedTransitionScope = this,
+                        transitionSpec = {
+                            if (skin == Skin.APPLE) {
+                                // iOS：新页从右边推入，旧页向左视差
+                                slideInHorizontally(tween(380)) { it } togetherWith slideOutHorizontally(tween(380)) { -it / 3 }
+                            } else {
+                                // 安卓：共享 X 轴（小位移 + 淡入淡出）
+                                (slideInHorizontally(tween(300)) { it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
+                                    (slideOutHorizontally(tween(300)) { -it / 8 } + fadeOut(tween(90)))
                             }
-                        }
-                    }
+                        },
+                        popTransitionSpec = {
+                            if (skin == Skin.APPLE) {
+                                ContentTransform(
+                                    slideInHorizontally(tween(340)) { -it / 3 }, slideOutHorizontally(tween(340)) { it }, targetContentZIndex = -1f,
+                                )
+                            } else {
+                                (slideInHorizontally(tween(300)) { -it / 8 } + fadeIn(tween(240, delayMillis = 60))) togetherWith
+                                    (slideOutHorizontally(tween(300)) { it / 8 } + fadeOut(tween(90)))
+                            }
+                        },
+                        predictivePopTransitionSpec = {
+                            if (skin == Skin.APPLE) {
+                                // iOS：跟着手指整页右滑，下面一页从左边视差滑入
+                                ContentTransform(
+                                    slideInHorizontally { -it / 3 }, slideOutHorizontally { it }, targetContentZIndex = -1f,
+                                )
+                            } else {
+                                // 安卓 17：被拖走的页面缩小、四角变圆（见 predictiveCorners），下面一页淡入
+                                ContentTransform(
+                                    fadeIn(initialAlpha = 0.6f) + scaleIn(initialScale = 0.96f),
+                                    scaleOut(targetScale = 0.9f) + fadeOut(targetAlpha = 0.4f),
+                                    targetContentZIndex = -1f,
+                                )
+                            }
+                        },
+                        entryProvider = entryProvider {
+                            entry<HomeKey> {
+                                Box(Modifier.predictiveCorners()) {
+                                    Home(vm, tab, snackbar, cookUrgentOnly, onCookUrgent = { cookUrgentOnly = it })
+                                }
+                            }
+                            entry<DetailKey> { k ->
+                                Box(Modifier.predictiveCorners()) {
+                                    val r = recipes.firstOrNull { it.id == k.id }
+                                    if (r != null) RecipeDetailScreen(vm, r, data, snackbar)
+                                    else LaunchedEffect(k) { nav.back() }
+                                }
+                            }
+                            entry<EditKey> { k ->
+                                Box(Modifier.predictiveCorners()) {
+                                    RecipeEditScreen(vm, k.id?.let { id -> recipes.firstOrNull { it.id == id } }, snackbar)
+                                }
+                            }
+                            entry<SettingsKey> {
+                                Box(Modifier.predictiveCorners()) { SettingsScreen(vm, data, snackbar) }
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -242,7 +220,7 @@ private fun Home(
         title = if (tab == 0) "今天吃啥" else TABS[tab].title,
         snackbar = snackbar,
         titleExtra = if (tab == 0) ({ Text(today, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }) else null,
-        actions = { IconButton(onClick = { nav.open(Route.Settings) }) { Icon(Icons.Outlined.Settings, "设置") } },
+        actions = { IconButton(onClick = { nav.open(SettingsKey) }) { Icon(Icons.Outlined.Settings, "设置") } },
         fab = {
             when (tab) {
                 0 -> ExtendedFloatingActionButton(
@@ -251,7 +229,7 @@ private fun Home(
                     text = { Text("添加食材") },
                 )
                 4 -> ExtendedFloatingActionButton(
-                    onClick = { nav.open(Route.Edit(null)) },
+                    onClick = { nav.open(EditKey(null)) },
                     icon = { Icon(Icons.Filled.Add, null) },
                     text = { Text("新菜") },
                 )

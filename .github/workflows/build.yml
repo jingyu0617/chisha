@@ -28,7 +28,7 @@ jobs:
         run: |
           set -o pipefail
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          gradle :app:assembleRelease --console=plain 2>&1 | tee build.log
+          gradle :app:testDebugUnitTest :app:assembleRelease --console=plain --continue 2>&1 | tee build.log
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/app.apk
 
@@ -36,7 +36,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          msg=$(grep -E "^e: |error:|What went wrong|Could not|Dependency |compileSdk|Android Gradle plugin|requires|^ +[0-9]+\\. " build.log | grep -v "^> Task" | sort -u | head -40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          msg=$(grep -E "^e: |error:|What went wrong|Could not|Dependency |compileSdk|Android Gradle plugin|requires|^ +[0-9]+\\. |FAILED|AssertionError|expected:" build.log | grep -v "^> Task" | sort -u | head -40 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::error title=build::${msg}"
 
       - name: Enable KVM

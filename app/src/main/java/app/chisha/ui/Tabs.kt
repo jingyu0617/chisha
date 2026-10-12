@@ -218,7 +218,7 @@ fun CookTab(vm: AppViewModel, data: AppData, urgentOnly: Boolean, setUrgentOnly:
         if (res.isEmpty()) item { EmptyCard("没有符合条件的菜，关掉上面的筛选试试。") }
         val shown = res.take(80)
         itemsIndexed(shown, key = { _, p -> p.first.id }) { i, (r, a) ->
-            RecipeRow(r, i, shown.size, r.name in data.favs, sub = { AnalysisLine(r, a) }) { nav.open(Route.Detail(r.id)) }
+            RecipeRow(r, i, shown.size, r.name in data.favs, sub = { AnalysisLine(r, a) }) { nav.open(DetailKey(r.id)) }
         }
     }
 }
@@ -416,7 +416,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
             item {
                 val r = current
                 ElevatedCard(
-                    onClick = { r?.let { nav.open(Route.Detail(it.id)) } },
+                    onClick = { r?.let { nav.open(DetailKey(it.id)) } },
                     shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 36.dp, bottomEnd = 36.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(min = 240.dp),
                 ) {
@@ -442,7 +442,7 @@ fun DrawTab(vm: AppViewModel, data: AppData) {
                         val p = drawPool.filter { it.id != current?.id }
                         current = p.randomOrNull() ?: drawPool.randomOrNull()
                     }, Modifier.weight(1f).height(56.dp)) { Icon(Icons.Outlined.Refresh, null); Spacer(Modifier.width(8.dp)); Text("换一个") }
-                    Button(onClick = { current?.let { nav.open(Route.Detail(it.id)) } }, Modifier.weight(1.3f).height(56.dp), enabled = current != null) { Text("看做法") }
+                    Button(onClick = { current?.let { nav.open(DetailKey(it.id)) } }, Modifier.weight(1.3f).height(56.dp), enabled = current != null) { Text("看做法") }
                 }
             }
         } else {
@@ -495,7 +495,7 @@ private fun MealPlan(
         Text("${if (f.vegOnly) "全素" else "$meat 荤 $veg 素"}${if (soup > 0) " 1 汤" else ""}，这桌每人约 $perPerson 克蛋白质（估算，不含米饭）",
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         meal.forEachIndexed { i, r ->
-            GroupItem(i, meal.size, onClick = { r?.let { nav.open(Route.Detail(it.id)) } }) {
+            GroupItem(i, meal.size, onClick = { r?.let { nav.open(DetailKey(it.id)) } }) {
                 Text(kinds.getOrElse(i) { "" }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.width(28.dp))
                 Column(Modifier.weight(1f)) {
                     if (r == null) Text("没有符合条件的菜", style = MaterialTheme.typography.bodyMedium)
@@ -567,7 +567,7 @@ fun BookTab(vm: AppViewModel, data: AppData) {
             val le = lastEaten(r.name)
             RecipeRow(r, i, list.size, r.name in data.favs, sub = if (mode == 2 && le > 0) ({
                 Text(agoText(le) + "吃过", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }) else null) { nav.open(Route.Detail(r.id)) }
+            }) else null) { nav.open(DetailKey(r.id)) }
         }
     }
 }

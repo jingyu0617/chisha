@@ -54,7 +54,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
                     IconButton(onClick = { vm.toggleFav(r.name); toast.show(if (fav) "已取消收藏" else "已收藏") }) {
                         if (fav) Icon(Icons.Filled.Favorite, "取消收藏", tint = cs.tertiary) else Icon(Icons.Outlined.FavoriteBorder, "收藏")
                     }
-                    IconButton(onClick = { nav.open(Route.Edit(r.id)) }) { Icon(Icons.Outlined.Edit, "编辑") }
+                    IconButton(onClick = { nav.open(EditKey(r.id)) }) { Icon(Icons.Outlined.Edit, "编辑") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Outlined.MoreVert, "更多") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(16.dp)) {

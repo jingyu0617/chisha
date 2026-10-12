@@ -8,6 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,12 +39,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var undoInv: List<InvItem>? = null
     private var undoShop: List<ShopItem>? = null
 
+    private val store = app.appStore
+    private val rstore = app.recipeStore
+
     init {
         viewModelScope.launch {
             val (d, r) = withContext(Dispatchers.IO) { loadAll() }
             _data.value = d
             _recipes.value = r
+            // 首次保存一次（含旧版迁移过来的数据），之后每次变化按顺序写入 DataStore
+            withContext(Dispatchers.IO) {
+                store.updateData { d }
+                rstore.updateData { RecipeBook(r, true) }
+            }
             _loaded.value = true
+            launch(Dispatchers.IO) { _data.drop(1).conflate().collect { v -> store.updateData { v } } }
+            launch(Dispatchers.IO) { _recipes.drop(1).conflate().collect { v -> rstore.updateData { RecipeBook(v, true) } } }
             tick()
         }
     }
@@ -51,16 +64,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Recipe.serializer()), text)
     }
 
-    private fun loadAll(): Pair<AppData, List<Recipe>> {
-        val r = try {
-            if (recipeFile.exists()) json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Recipe.serializer()), recipeFile.readText()) else defaultRecipes()
-        } catch (e: Exception) {
-            defaultRecipes()
+    private suspend fun loadAll(): Pair<AppData, List<Recipe>> {
+        val book = runCatching { rstore.data.first() }.getOrDefault(RecipeBook())
+        val r = when {
+            book.initialized -> book.list
+            // 从旧版的 recipes.json 迁移
+            recipeFile.exists() -> runCatching {
+                json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Recipe.serializer()), recipeFile.readText())
+            }.getOrElse { defaultRecipes() }
+            else -> defaultRecipes()
         }
-        var d = try {
-            if (dataFile.exists()) json.decodeFromString(AppData.serializer(), dataFile.readText()) else AppData()
-        } catch (e: Exception) {
-            AppData()
+        var d = runCatching { store.data.first() }.getOrDefault(AppData())
+        if (!d.seeded && dataFile.exists()) {
+            // 从旧版的 data.json 迁移
+            d = runCatching { json.decodeFromString(AppData.serializer(), dataFile.readText()) }.getOrDefault(d)
         }
         if (!d.seeded) {
             d = d.copy(inv = sampleInv(), seeded = true)
@@ -83,19 +100,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun persistData() {
-        val snapshot = _data.value
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { dataFile.writeText(json.encodeToString(AppData.serializer(), snapshot)) }
-        }
-    }
+    /** 写入由 init 里的收集器统一完成（DataStore 原子写入），这里不用再做事 */
+    private fun persistData() {}
 
-    private fun persistRecipes() {
-        val snapshot = _recipes.value
-        viewModelScope.launch(Dispatchers.IO) {
-            runCatching { recipeFile.writeText(json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Recipe.serializer()), snapshot)) }
-        }
-    }
+    private fun persistRecipes() {}
 
     private inline fun edit(f: (AppData) -> AppData) {
         _data.update(f)
@@ -108,33 +116,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun tick() {
         if (!_loaded.value) return
-        val now = System.currentTimeMillis()
-        val day = 86_400_000L
-        var changed = false
-        val toShop = mutableListOf<String>()
-        val inv = _data.value.inv.map { it0 ->
-            var it = it0
-            val dose = it.dose; val per = it.perDay
-            if (dose != null && per != null && dose > 0 && per > 0) {
-                val since = it.autoAt
-                if (since == null) { it = it.copy(autoAt = now); changed = true }
-                else {
-                    val days = ((now - since) / day).toInt()
-                    if (days >= 1) {
-                        it = it.copy(qty = round2((it.qty - days * dose * per).coerceAtLeast(0.0)), autoAt = since + days * day)
-                        changed = true
-                    }
-                }
-                val left = K.supplyDays(it) ?: 99
-                if (left <= 5 && !it.reordered) {
-                    toShop += it.name
-                    it = it.copy(reordered = true); changed = true
-                }
-            }
-            it
-        }
-        if (changed) edit { it.copy(inv = inv) }
-        if (toShop.isNotEmpty()) addToShop(toShop, "快用完了")
+        val (nd, changed) = Logic.applyConsumption(_data.value)
+        if (changed) edit { nd }
     }
 
     /** 消耗品“用了一次” */
@@ -264,23 +247,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 返回新加了几样 */
     fun addToShop(names: List<String>, dish: String?): Int {
-        var n = 0
-        edit { d ->
-            val list = d.shop.toMutableList()
-            for (raw in names) {
-                val name = raw.trim()
-                if (name.isEmpty()) continue
-                val idx = list.indexOfFirst { !it.done && K.sameThing(it.name, name) }
-                if (idx >= 0) {
-                    val ex = list[idx]
-                    if (dish != null && dish !in ex.forDishes) list[idx] = ex.copy(forDishes = ex.forDishes + dish)
-                } else {
-                    list += ShopItem(newId("p"), name, K.guessCat(name), listOfNotNull(dish), false, System.currentTimeMillis())
-                    n++
-                }
-            }
-            d.copy(shop = list)
-        }
+        val (nd, n) = Logic.addToShop(_data.value, names, dish)
+        edit { nd }
         return n
     }
 
@@ -333,6 +301,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setSeasonHave(v: Boolean) = edit { it.copy(settings = it.settings.copy(seasonHave = v)) }
     fun setSkin(v: String) = edit { it.copy(settings = it.settings.copy(skin = v)) }
     fun setMuscle(v: Boolean) = edit { it.copy(settings = it.settings.copy(muscle = v)) }
+    fun setNotify(v: Boolean) {
+        edit { it.copy(settings = it.settings.copy(notify = v)) }
+        val ctx = getApplication<Application>()
+        if (v) Reminders.schedule(ctx) else Reminders.cancel(ctx)
+    }
+    fun markAskedNotif() = edit { it.copy(settings = it.settings.copy(askedNotif = true)) }
     fun setFilters(f: DrawFilters) = edit { it.copy(filters = f) }
     fun setPpl(n: Int) = edit { it.copy(ppl = n.coerceIn(1, 10)) }
 

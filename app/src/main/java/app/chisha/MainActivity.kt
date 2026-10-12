@@ -1,7 +1,11 @@
 package app.chisha
 
 import android.os.Bundle
+import android.Manifest
+import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +28,17 @@ class MainActivity : ComponentActivity() {
             // 自动测试用：am start --es skin apple 直接切到苹果外观
             val forced = intent?.getStringExtra("skin")
             LaunchedEffect(loaded) { if (loaded && forced != null) vm.setSkin(forced) }
+            // 系统通知：第一次打开时问一次权限，并安排每天的检查
+            val askPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+            LaunchedEffect(loaded) {
+                if (!loaded) return@LaunchedEffect
+                Reminders.ensureChannel(this@MainActivity)
+                if (data.settings.notify) Reminders.schedule(this@MainActivity)
+                if (forced == null && !data.settings.askedNotif && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    vm.markAskedNotif()
+                    askPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
             // 每次回到 App：消耗品按天扣量、快用完的进清单
             LifecycleResumeEffect(Unit) {
                 vm.tick()

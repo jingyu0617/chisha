@@ -68,6 +68,15 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, snackbar: SnackbarHostState)
                 Switch(data.settings.muscle, { vm.setMuscle(it) })
             }
 
+            SectionTitle("提醒")
+            GroupItem(0, 1, onClick = { vm.setNotify(!data.settings.notify) }) {
+                Column(Modifier.weight(1f)) {
+                    Text("每天早上 9 点提醒", style = MaterialTheme.typography.bodyLarge)
+                    Text("有食材快到期、蛋白粉咖啡豆快用完时发通知；没事就不打扰", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(data.settings.notify, { vm.setNotify(it) })
+            }
+
             SectionTitle("调料")
             GroupItem(0, 1, onClick = { vm.setSeasonHave(!data.settings.seasonHave) }) {
                 Column(Modifier.weight(1f)) {

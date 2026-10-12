@@ -61,6 +61,8 @@ data class Settings(
     val seasonHave: Boolean = true,   // 调料默认家里有
     val skin: String = "android",     // android = 安卓 17 风格, apple = 苹果 Liquid Glass 风格
     val muscle: Boolean = true,       // 增肌：优先推荐高蛋白
+    val notify: Boolean = true,       // 每天 9 点的系统通知
+    val askedNotif: Boolean = false,  // 已经问过通知权限
 )
 
 @Serializable
