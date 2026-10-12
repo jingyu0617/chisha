@@ -64,9 +64,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
         },
         bottomBar = {
             SkinBottomPanel {
-                Button(onClick = { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth().height(56.dp)) {
-                    Text("做了这道", style = MaterialTheme.typography.titleMedium)
-                }
+                SkinPrimaryButton("做了这道", { nav.sheet(Sheet.Deduct(r)) }, Modifier.fillMaxWidth())
             }
         },
     ) { pad ->

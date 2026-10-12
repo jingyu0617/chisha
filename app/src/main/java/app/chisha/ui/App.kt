@@ -1,17 +1,18 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-
 package app.chisha.ui
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
@@ -25,14 +26,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.chisha.AppViewModel
 import app.chisha.InvItem
 import app.chisha.K
 import app.chisha.Recipe
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 sealed interface Route {
     data object Settings : Route
@@ -67,54 +71,138 @@ class Nav(
 
 val LocalNav = staticCompositionLocalOf<Nav> { error("no nav") }
 
+/** 页面栈里的一页；appear 从 0 到 1 表示进入动画 */
+private class Entry(val route: Route, val id: Long) {
+    val appear = Animatable(0f)
+}
+
 @Composable
 fun ChishaApp(vm: AppViewModel) {
     val loaded by vm.loaded.collectAsStateWithLifecycle()
     val data by vm.data.collectAsStateWithLifecycle()
     val recipes by vm.recipes.collectAsStateWithLifecycle()
+    val skin = LocalSkin.current
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val toaster = remember { Toaster(snackbar, scope) }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val stack = remember { mutableStateListOf<Route>() }
+    val stack = remember { mutableStateListOf<Entry>() }
+    var nextId by remember { mutableLongStateOf(1L) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     var cookUrgentOnly by remember { mutableStateOf(false) }
 
+    // 预见性返回：手势进度（0~1）和从哪边滑
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    var backEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+    var closing by remember { mutableStateOf(false) }
+
     val nav = remember {
         Nav(
-            open = { stack.add(it) },
-            back = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) },
+            open = { r ->
+                val e = Entry(r, nextId++)
+                stack.add(e)
+                scope.launch { e.appear.animateTo(1f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) }
+            },
+            back = {
+                val e = stack.lastOrNull()
+                if (e != null && !closing) {
+                    closing = true
+                    scope.launch {
+                        e.appear.animateTo(0f, tween(260))
+                        stack.remove(e); closing = false
+                    }
+                }
+            },
             sheet = { sheet = it },
             tab = { tab = it },
         )
     }
 
-    BackHandler(enabled = stack.isNotEmpty()) { nav.back() }
+    PredictiveBackHandler(enabled = stack.isNotEmpty() && !closing) { events ->
+        try {
+            events.collect { ev ->
+                backProgress = ev.progress
+                backEdge = ev.swipeEdge
+            }
+            // 松手确认返回：从当前进度接着滑完
+            val e = stack.lastOrNull()
+            closing = true
+            scope.launch {
+                animate(backProgress, 1f, animationSpec = tween(180)) { v, _ -> backProgress = v }
+                if (e != null) { e.appear.snapTo(0f); stack.remove(e) }
+                backProgress = 0f; closing = false
+            }
+        } catch (c: CancellationException) {
+            // 取消返回：弹回原位
+            scope.launch { animate(backProgress, 0f, animationSpec = spring()) { v, _ -> backProgress = v } }
+            throw c
+        }
+    }
 
     // 弹层打开时，后面的内容做模糊（安卓 12 及以上生效）
     val blur by animateDpAsState(if (sheet != null) 18.dp else 0.dp, label = "blur")
 
     CompositionLocalProvider(LocalToaster provides toaster, LocalNav provides nav) {
-        Box(Modifier.fillMaxSize().blur(blur)) {
+        BoxWithConstraints(Modifier.fillMaxSize().blur(blur)) {
+            val w = constraints.maxWidth.toFloat()
             if (!loaded) {
                 Box(Modifier.fillMaxSize()) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             } else {
-                Home(vm, tab, snackbar, cookUrgentOnly, onCookUrgent = { cookUrgentOnly = it })
-                AnimatedContent(
-                    targetState = stack.lastOrNull(),
-                    transitionSpec = {
-                        (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { it / 3 } + fadeOut())
-                    },
-                    label = "route",
-                ) { r ->
-                    when (r) {
-                        null -> Unit
-                        is Route.Detail -> recipes.firstOrNull { it.id == r.id }?.let { RecipeDetailScreen(vm, it, data, snackbar) }
-                            ?: LaunchedEffect(r) { nav.back() }
-                        is Route.Edit -> RecipeEditScreen(vm, r.id?.let { id -> recipes.firstOrNull { it.id == id } }, snackbar)
-                        Route.Settings -> SettingsScreen(vm, data, snackbar)
+                val top = stack.lastOrNull()
+                val tAppear = top?.appear?.value ?: 0f
+                // 下面那一层（首页或上一页）：苹果外观有视差，安卓外观轻微缩放 + 变暗
+                fun Modifier.under(): Modifier = this.graphicsLayer {
+                    if (top == null) return@graphicsLayer
+                    val cover = tAppear * (1f - backProgress)
+                    if (skin == Skin.APPLE) translationX = -0.3f * w * cover
+                    else { val s = 1f - 0.04f * cover; scaleX = s; scaleY = s }
+                }
+                Box(Modifier.fillMaxSize().under()) {
+                    Home(vm, tab, snackbar, cookUrgentOnly, onCookUrgent = { cookUrgentOnly = it })
+                }
+                if (top != null) {
+                    // 变暗遮罩
+                    val dim = (if (skin == Skin.APPLE) 0.12f else 0.32f) * tAppear * (1f - backProgress)
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+                }
+                stack.forEachIndexed { i, e ->
+                    if (i < stack.size - 2) return@forEachIndexed
+                    val isTop = i == stack.lastIndex
+                    key(e.id) {
+                        Box(
+                            Modifier.fillMaxSize().graphicsLayer {
+                                val t = e.appear.value
+                                if (isTop) {
+                                    val p = backProgress
+                                    if (skin == Skin.APPLE) {
+                                        // iOS：整页从右滑入，返回时跟着手指往右滑
+                                        translationX = (1f - t) * w + p * w
+                                        shadowElevation = 24f
+                                    } else {
+                                        // 安卓 17：进入是淡入 + 小位移；返回手势时缩小、圆角、贴向一侧
+                                        alpha = t
+                                        val sign = if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
+                                        translationX = (1f - t) * 0.12f * w + sign * p * (w * 0.06f)
+                                        val s = 1f - 0.1f * p
+                                        scaleX = s; scaleY = s
+                                        shape = RoundedCornerShape((32f * p).dp)
+                                        clip = p > 0f
+                                    }
+                                } else if (skin == Skin.APPLE) {
+                                    val tt = top?.appear?.value ?: 0f
+                                    translationX = -0.3f * w * tt * (1f - backProgress)
+                                }
+                            },
+                        ) {
+                            when (val r = e.route) {
+                                is Route.Detail -> recipes.firstOrNull { it.id == r.id }?.let { RecipeDetailScreen(vm, it, data, snackbar) }
+                                    ?: LaunchedEffect(r) { stack.remove(e) }
+                                is Route.Edit -> RecipeEditScreen(vm, r.id?.let { id -> recipes.firstOrNull { it.id == id } }, snackbar)
+                                Route.Settings -> SettingsScreen(vm, data, snackbar)
+                            }
+                        }
                     }
                 }
             }
