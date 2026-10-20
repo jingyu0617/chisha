@@ -80,7 +80,23 @@ shoot_all() {
   adb shell input keyevent 4; sleep 2
 }
 
+# 预见性返回测试：手指从左边缘往右拖，拖到一半时截图（不松手），再松手
+pb_test() {
+  echo "导航方式（2=手势）：$(adb shell settings get secure navigation_mode)"
+  adb shell am force-stop app.chisha
+  adb shell am start -n app.chisha/.MainActivity; sleep 8
+  tap_text "菜谱"; tap_text "京酱肉丝" "农家一碗香" "凉拌鸡丝"; sleep 2
+  shot "pb-0-详情"
+  adb shell input motionevent DOWN 3 1300
+  for x in 30 60 90 120 160 200 240; do adb shell input motionevent MOVE $x 1300; done
+  sleep 1; adb exec-out screencap -p > shots/pb-1-拖到一小半.png
+  for x in 300 360 420 480; do adb shell input motionevent MOVE $x 1300; done
+  sleep 1; adb exec-out screencap -p > shots/pb-2-拖到一半.png
+  adb shell input motionevent UP 480 1300; sleep 2
+  shot "pb-3-松手后"
+}
 adb shell cmd uimode night no
+pb_test
 shoot_all "浅色"
 adb shell cmd uimode night yes
 shoot_all "深色"
