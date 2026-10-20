@@ -139,12 +139,10 @@ fun ChishaApp(vm: AppViewModel) {
                                 (slideOutHorizontally(tween(300)) { it / 8 } + fadeOut(tween(90)))
                         },
                         predictivePopTransitionSpec = {
-                            // 安卓 17：被拖走的页面缩小、四角变圆（见 predictiveCorners），下面一页淡入
-                            ContentTransform(
-                                fadeIn(initialAlpha = 0.6f) + scaleIn(initialScale = 0.96f),
-                                scaleOut(targetScale = 0.9f) + fadeOut(targetAlpha = 0.4f),
-                                targetContentZIndex = -1f,
-                            )
+                            // 按 Navigation 3 官方默认做法 + Material 预见性返回规范：
+                            // 被拖走的页面只缩小（到 90%）、四角变圆（见 predictiveCorners），不变透明；
+                            // 下面那一页完整显示、不缩放。上下层级由 NavDisplay 自己处理。
+                            ContentTransform(EnterTransition.None, scaleOut(targetScale = 0.9f))
                         },
                         entryProvider = entryProvider {
                             entry<HomeKey> {
