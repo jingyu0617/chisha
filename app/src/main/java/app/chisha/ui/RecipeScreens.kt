@@ -56,7 +56,7 @@ fun RecipeDetailScreen(vm: AppViewModel, r: Recipe, data: AppData, snackbar: Sna
         snackbar = snackbar,
         onBack = nav.back,
         subtitle = listOfNotNull(r.cat, r.protein?.let { "蛋白 ${it}g" }, r.minutes?.let { "约${it}分钟" }).joinToString(" · "),
-        titleModifier = Modifier.sharedRecipe(r.id),
+        titleModifier = Modifier.sharedRecipe(r.id, detail = true),
         actions = {
                     IconButton(onClick = { vm.toggleFav(r.name); toast.show(if (fav) "已取消收藏" else "已收藏") }) {
                         if (fav) Icon(Icons.Filled.Favorite, "取消收藏", tint = cs.tertiary) else Icon(Icons.Outlined.FavoriteBorder, "收藏")

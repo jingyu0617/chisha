@@ -76,13 +76,21 @@ fun rememberHaptics(): Haptics {
 
 /* ======================= 共享元素（列表 → 详情） ======================= */
 
-/** 菜名在列表和详情页之间“飞过去” */
+/**
+ * 菜名在列表和详情页之间“飞过去”——只在“打开详情”时飞。
+ * 返回时（特别是预见性返回手势拖到一半时）不飞，否则标题会提前跳到列表位置、浮在页面中间。
+ * 做法：返回时详情页这一端不参与配对（详情正在退出 / 列表正在进入），两边就各自正常显示。
+ */
 @Composable
-fun Modifier.sharedRecipe(id: String, part: String = "title"): Modifier {
+fun Modifier.sharedRecipe(id: String, detail: Boolean = false): Modifier {
     val shared = LocalSharedScope.current ?: return this
     val anim = LocalNavAnimatedContentScope.current
+    val t = anim.transition
+    val popping = if (detail) t.targetState == androidx.compose.animation.EnterExitState.PostExit
+    else t.currentState == androidx.compose.animation.EnterExitState.PreEnter && t.targetState == androidx.compose.animation.EnterExitState.Visible
+    if (popping) return this
     return with(shared) {
-        this@sharedRecipe.sharedBounds(rememberSharedContentState("recipe-$id-$part"), animatedVisibilityScope = anim)
+        this@sharedRecipe.sharedBounds(rememberSharedContentState("recipe-$id-title"), animatedVisibilityScope = anim)
     }
 }
 
